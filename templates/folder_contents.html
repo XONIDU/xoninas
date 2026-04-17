@@ -1,0 +1,94 @@
+	<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ folder_name }} · XONINAS</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: #000;
+            font-family: 'Segoe UI', system-ui;
+            color: #0f0;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #6f2da8;
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        h1 { color: #6f2da8; }
+        .back {
+            background: #6f2da8;
+            padding: 0.4rem 1rem;
+            border-radius: 40px;
+            text-decoration: none;
+            color: white;
+        }
+        .upload {
+            background: #111;
+            border: 1px solid #6f2da8;
+            border-radius: 28px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #222;
+        }
+        th { color: #6f2da8; }
+        .file-actions a {
+            margin-right: 12px;
+            text-decoration: none;
+            color: #0f0;
+        }
+        .delete { color: #f77 !important; }
+        .empty { text-align: center; padding: 2rem; color: #666; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>📂 {{ folder_name }}</h1>
+        <a href="/" class="back">← Todas las carpetas</a>
+    </header>
+
+    <div class="upload">
+        <form method="POST" action="/upload/{{ folder_name }}" enctype="multipart/form-data" style="display: flex; gap: 12px;">
+            <input type="file" name="file" required style="flex:1; background:#222; border:1px solid #6f2da8; border-radius:40px; padding:8px; color:#0f0;">
+            <button type="submit" style="background:#00aa55; border:none; border-radius:40px; padding:8px 24px;">⬆ Subir</button>
+        </form>
+    </div>
+
+    <table>
+        <thead><tr><th>Nombre</th><th>Tamaño</th><th>Modificado</th><th>Acciones</th></tr></thead>
+        <tbody>
+        {% for f in files %}
+        <tr>
+            <td>{{ f.name }}</td>
+            <td>{% if f.size < 1024 %}{{ f.size }} B{% elif f.size < 1048576 %}{{ (f.size/1024)|round(1) }} KB{% else %}{{ (f.size/1048576)|round(1) }} MB{% endif %}</td>
+            <td>{{ f.modified }}</td>
+            <td class="file-actions">
+                <a href="/download/{{ folder_name }}/{{ f.name }}">⬇ Descargar</a>
+                <a href="/delete_file/{{ folder_name }}/{{ f.name }}" class="delete" onclick="return confirm('¿Borrar archivo?')">🗑 Eliminar</a>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">📭 Carpeta vacía. Sube archivos.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+</body>
+</html>

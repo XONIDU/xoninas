@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>XONINAS · Panel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            font-family: 'Segoe UI', system-ui;
+            color: #00ff88;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #6f2da8;
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        h1 {
+            color: #6f2da8;
+            font-size: 2rem;
+        }
+        .logout {
+            background: #6f2da8;
+            padding: 0.5rem 1.2rem;
+            border-radius: 40px;
+            text-decoration: none;
+            color: white;
+            font-weight: bold;
+        }
+        .form-card {
+            background: #111;
+            border: 1px solid #6f2da8;
+            border-radius: 28px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .form-group {
+            flex: 1;
+            min-width: 180px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-bottom: 0.3rem;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            background: #222;
+            border: 1px solid #6f2da8;
+            border-radius: 40px;
+            color: #0f0;
+        }
+        button {
+            background: #00aa55;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            color: black;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+        .folder {
+            background: #0a0a0a;
+            border: 1px solid #6f2da8;
+            border-radius: 24px;
+            padding: 1.2rem;
+            transition: 0.2s;
+        }
+        .folder:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 15px rgba(111,45,168,0.4);
+        }
+        .folder-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            word-break: break-all;
+        }
+        .badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            background: #6f2da8;
+            padding: 0.2rem 0.8rem;
+            border-radius: 20px;
+            margin: 0.5rem 0;
+            color: white;
+        }
+        .actions {
+            margin-top: 1rem;
+            display: flex;
+            gap: 0.8rem;
+        }
+        .btn {
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 30px;
+            text-align: center;
+            flex: 1;
+            font-size: 0.85rem;
+        }
+        .btn-primary {
+            background: #6f2da8;
+            color: white;
+        }
+        .btn-danger {
+            background: #a22;
+            color: white;
+        }
+        .empty {
+            text-align: center;
+            padding: 3rem;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>📁 XONINAS · Carpetas</h1>
+        <a href="/logout" class="logout">🚪 Cerrar sesión</a>
+    </header>
+
+    <div class="form-card">
+        <div class="form-group">
+            <label>📂 Nombre de la carpeta</label>
+            <input type="text" id="folder_name" placeholder="ej: Documentos">
+        </div>
+        <div class="form-group">
+            <label>🔒 Contraseña (opcional)</label>
+            <input type="password" id="folder_password" placeholder="Dejar vacío = pública">
+        </div>
+        <button onclick="create()">➕ Crear carpeta</button>
+    </div>
+
+    <div class="grid">
+        {% for f in folders %}
+        <div class="folder">
+            <div class="folder-name">{{ f.name }}</div>
+            {% if f.password_hash %}
+                <div class="badge">🔐 Protegida</div>
+            {% else %}
+                <div class="badge" style="background:#333;">🔓 Abierta</div>
+            {% endif %}
+            <div class="actions">
+                <a href="/folder_auth/{{ f.name }}" class="btn btn-primary">📂 Entrar</a>
+                <a href="/delete_folder/{{ f.name }}" class="btn btn-danger" onclick="return confirm('¿Eliminar carpeta y todo su contenido?')">🗑 Borrar</a>
+            </div>
+            <div style="font-size:0.7rem; color:#666; margin-top:0.8rem;">Creada: {{ f.created }}</div>
+        </div>
+        {% else %}
+        <div class="empty">✨ No hay carpetas. Crea una usando el formulario.</div>
+        {% endfor %}
+    </div>
+</div>
+<script>
+function create() {
+    let name = document.getElementById('folder_name').value.trim();
+    let pwd = document.getElementById('folder_password').value;
+    if(!name) return alert("Escribe un nombre");
+    let form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/create_folder';
+    let inp1 = document.createElement('input');
+    inp1.type = 'hidden'; inp1.name = 'folder_name'; inp1.value = name;
+    let inp2 = document.createElement('input');
+    inp2.type = 'hidden'; inp2.name = 'folder_password'; inp2.value = pwd;
+    form.appendChild(inp1); form.appendChild(inp2);
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>
+</body>
+</html>
