@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 XONINAS - Lanzador Universal con autoreinicio
 Sistema de Almacenamiento NAS local
 """
-
 import subprocess
 import sys
 import os
