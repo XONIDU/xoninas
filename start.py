@@ -5,12 +5,7 @@
 XONINAS - Lanzador Universal con autoreinicio
 Sistema NAS Local con Carpetas Protegidas
 
-Este script:
-- Detecta el sistema operativo y distribución
-- Instala pip si no existe (Linux con gestor de paquetes)
-- Instala las dependencias (Flask, Werkzeug, Waitress, requests)
-- Ejecuta la configuración inicial (clave maestra)
-- Inicia el servidor con autoreinicio y healthcheck
+Ahora con soporte para Cloudflare Tunnel (acceso remoto gratuito)
 
 Desarrollado por: Darian Alberto Camacho Salas
 Organización: XONIDU
@@ -24,9 +19,11 @@ import platform
 import shutil
 import importlib.util
 import signal
+import threading
+import webbrowser
 
 # ============================================================================
-# Colores para terminal (con detección automática)
+# Colores para terminal
 # ============================================================================
 class Colors:
     GREEN = '\033[92m'
@@ -60,10 +57,8 @@ def get_system():
     return platform.system().lower()
 
 def get_linux_distro():
-    """Detecta la distribución de Linux (para instalar pip correctamente)"""
     if get_system() != 'linux':
         return None
-    
     try:
         if os.path.exists('/etc/os-release'):
             with open('/etc/os-release', 'r') as f:
@@ -78,7 +73,6 @@ def get_linux_distro():
                     return 'centos'
                 elif 'opensuse' in content:
                     return 'opensuse'
-        # Fallback por comandos
         if shutil.which('apt'):
             return 'debian-based'
         elif shutil.which('pacman'):
@@ -94,7 +88,6 @@ def get_linux_distro():
         return 'linux-generico'
 
 def get_python_command():
-    """Devuelve el comando Python correcto (python3 en Linux/Mac, python en Windows)"""
     if get_system() == 'windows':
         return ['python']
     else:
@@ -105,15 +98,12 @@ def get_python_command():
             return ['python']
 
 def get_pip_command():
-    """Devuelve el comando pip correcto usando -m pip"""
     return [sys.executable, '-m', 'pip']
 
 def get_install_flags():
-    """Devuelve los flags apropiados para pip según el sistema y distribución"""
     flags = []
     sistema = get_system()
     distro = get_linux_distro()
-    
     if sistema == 'linux':
         if distro in ['arch-based', 'fedora']:
             flags.append('--break-system-packages')
@@ -121,7 +111,6 @@ def get_install_flags():
             flags.append('--user')
     elif sistema == 'darwin':
         flags.append('--user')
-    # Windows no necesita flags especiales
     return flags
 
 def print_banner():
@@ -148,10 +137,9 @@ def print_banner():
     print(banner)
 
 # ============================================================================
-# Verificación e instalación de Python y pip
+# Verificación e instalación de pip
 # ============================================================================
 def check_python():
-    """Verifica que Python esté instalado y accesible"""
     try:
         cmd = get_python_command() + ['--version']
         subprocess.run(cmd, capture_output=True, check=True)
@@ -160,7 +148,6 @@ def check_python():
         return False
 
 def check_pip():
-    """Verifica que pip esté instalado y funcione"""
     try:
         cmd = get_pip_command() + ['--version']
         subprocess.run(cmd, capture_output=True, check=True)
@@ -169,97 +156,62 @@ def check_pip():
         return False
 
 def install_pip_linux():
-    """Instala pip en Linux usando el gestor de paquetes de la distribución"""
     distro = get_linux_distro()
     print(f"{Colors.YELLOW}Instalando pip en Linux ({distro})...{Colors.END}")
-    
     if distro == 'debian-based':
         try:
             subprocess.run(['sudo', 'apt', 'update'], check=False)
             subprocess.run(['sudo', 'apt', 'install', '-y', 'python3-pip'], check=True)
-            print(f"{Colors.GREEN}Pip instalado correctamente{Colors.END}")
             return True
         except:
-            print(f"{Colors.RED}Error instalando pip con apt{Colors.END}")
             return False
-    
     elif distro == 'arch-based':
         try:
             subprocess.run(['sudo', 'pacman', '-S', '--noconfirm', 'python-pip'], check=True)
-            print(f"{Colors.GREEN}Pip instalado correctamente{Colors.END}")
             return True
         except:
-            print(f"{Colors.RED}Error instalando pip con pacman{Colors.END}")
             return False
-    
     elif distro == 'fedora':
         try:
             subprocess.run(['sudo', 'dnf', 'install', '-y', 'python3-pip'], check=True)
-            print(f"{Colors.GREEN}Pip instalado correctamente{Colors.END}")
             return True
         except:
-            print(f"{Colors.RED}Error instalando pip con dnf{Colors.END}")
             return False
-    
     elif distro == 'centos':
         try:
             subprocess.run(['sudo', 'yum', 'install', '-y', 'python3-pip'], check=True)
-            print(f"{Colors.GREEN}Pip instalado correctamente{Colors.END}")
             return True
         except:
-            print(f"{Colors.RED}Error instalando pip con yum{Colors.END}")
             return False
-    
     elif distro == 'opensuse':
         try:
             subprocess.run(['sudo', 'zypper', 'install', '-y', 'python3-pip'], check=True)
-            print(f"{Colors.GREEN}Pip instalado correctamente{Colors.END}")
             return True
         except:
-            print(f"{Colors.RED}Error instalando pip con zypper{Colors.END}")
             return False
-    
-    else:
-        print(f"{Colors.RED}No se pudo detectar el gestor de paquetes. Instala pip manualmente.{Colors.END}")
-        print("  Para Debian/Ubuntu: sudo apt install python3-pip")
-        print("  Para Arch: sudo pacman -S python-pip")
-        print("  Para Fedora: sudo dnf install python3-pip")
-        return False
+    return False
 
 def install_pip_windows():
-    """Instala pip en Windows usando ensurepip o get-pip.py"""
     print(f"{Colors.YELLOW}Instalando pip en Windows...{Colors.END}")
     try:
-        # Primero intentar con ensurepip
         subprocess.run([sys.executable, '-m', 'ensurepip', '--upgrade'], check=True)
-        print(f"{Colors.GREEN}Pip instalado correctamente (ensurepip){Colors.END}")
         return True
     except:
         try:
-            # Descargar get-pip.py
             import urllib.request
-            print("  Descargando get-pip.py...")
             urllib.request.urlretrieve('https://bootstrap.pypa.io/get-pip.py', 'get-pip.py')
             subprocess.run([sys.executable, 'get-pip.py'], check=True)
             os.remove('get-pip.py')
-            print(f"{Colors.GREEN}Pip instalado correctamente (get-pip.py){Colors.END}")
             return True
-        except Exception as e:
-            print(f"{Colors.RED}Error instalando pip: {e}{Colors.END}")
+        except:
             return False
 
 # ============================================================================
-# Gestión de dependencias
+# Dependencias de Python
 # ============================================================================
-REQUISITOS = [
-    'flask==2.3.3',
-    'werkzeug==2.3.0',
-    'waitress==2.1.2',
-    'requests==2.31.0'
-]
+REQUISITOS = ['flask==2.3.3', 'werkzeug==2.3.0', 'waitress==2.1.2', 'requests==2.31.0']
 
 def check_dependencies():
-    """Verifica qué dependencias faltan"""
     print(f"\n{Colors.BOLD}📦 Verificando dependencias...{Colors.END}")
     missing = []
     for req in REQUISITOS:
@@ -273,66 +225,210 @@ def check_dependencies():
     return missing
 
 def install_dependencies(missing):
-    """Instala las dependencias faltantes usando pip con los flags correctos"""
     if not missing:
         return True
-    
     print(f"\n{Colors.BOLD}Instalando dependencias faltantes...{Colors.END}")
     pip_cmd = get_pip_command()
     flags = get_install_flags()
-    
-    if flags:
-        print(f"{Colors.CYAN}Usando flags: {' '.join(flags)}{Colors.END}")
-    
     success = True
     for req in missing:
-        print(f"  Instalando {req}...")
         try:
             cmd = pip_cmd + ['install', req] + flags
             subprocess.run(cmd, check=True, capture_output=True)
-            print(f"{Colors.GREEN}    ✓ {req} instalado{Colors.END}")
-        except subprocess.CalledProcessError as e:
-            print(f"{Colors.RED}    ✗ Error instalando {req}{Colors.END}")
-            # Intentar sin flags (último recurso)
+            print(f"{Colors.GREEN}    ✓ {req}{Colors.END}")
+        except:
             try:
                 cmd2 = pip_cmd + ['install', req]
                 subprocess.run(cmd2, check=True)
-                print(f"{Colors.GREEN}    ✓ {req} instalado (sin flags){Colors.END}")
+                print(f"{Colors.GREEN}    ✓ {req} (sin flags){Colors.END}")
             except:
+                print(f"{Colors.RED}    ✗ {req}{Colors.END}")
                 success = False
-    
-    if success:
-        print(f"{Colors.GREEN}✅ Todas las dependencias instaladas correctamente.{Colors.END}")
-    else:
-        print(f"{Colors.YELLOW}⚠️ Algunas dependencias no se instalaron. Puedes instalarlas manualmente:{Colors.END}")
-        print(f"   {get_pip_command()} install {' '.join(missing)} {' '.join(flags)}")
-    
     return success
 
 # ============================================================================
-# Configuración inicial (clave maestra)
+# Configuración inicial (ruta y clave maestra)
 # ============================================================================
-def run_initial_config():
-    """Ejecuta xoninas.py para crear master.csv si no existe"""
+def run_initial_setup():
+    """Ejecuta la configuración inicial si no existe master.csv o config.csv"""
+    # Configurar ruta de almacenamiento si no existe
+    if not os.path.exists('config.csv'):
+        print("\n" + "="*60)
+        print("   CONFIGURACIÓN DE RUTA DE ALMACENAMIENTO")
+        print("="*60)
+        default = str(os.path.abspath('storage'))
+        print(f"Ruta por defecto: {default}")
+        ruta = input("\nNueva ruta (deja vacío para usar la de defecto): ").strip()
+        if not ruta:
+            ruta = default
+        else:
+            ruta = str(os.path.abspath(os.path.expanduser(ruta)))
+        os.makedirs(ruta, exist_ok=True)
+        with open('config.csv', 'w') as f:
+            f.write(f"storage_path,{ruta}\n")
+        print(f"{Colors.GREEN}✅ Ruta guardada: {ruta}{Colors.END}")
+    
+    # Configurar clave maestra si no existe
     if not os.path.exists('master.csv'):
-        print(f"\n{Colors.YELLOW}⚠️  No se encontró clave maestra. Ejecutando configuración inicial...{Colors.END}")
-        print(f"{Colors.CYAN}   Sigue las instrucciones para establecer la clave maestra del NAS.{Colors.END}\n")
-        
-        try:
-            subprocess.run([sys.executable, 'xoninas.py'], check=True)
-        except subprocess.CalledProcessError:
-            print(f"{Colors.RED}Error durante la configuración inicial{Colors.END}")
-            sys.exit(1)
-        
-        print(f"\n{Colors.GREEN}✅ Clave maestra guardada correctamente.{Colors.END}")
-        print(f"{Colors.YELLOW}▶️  Vuelve a ejecutar 'python3 start.py' para iniciar el servidor NAS.{Colors.END}")
+        print("\n" + "="*50)
+        print("    CONFIGURACIÓN INICIAL - CLAVE MAESTRA")
+        print("="*50)
+        pwd = input("Clave maestra: ").strip()
+        if not pwd:
+            pwd = "admin"
+            print("Usando 'admin'")
+        import hashlib
+        hashed = hashlib.sha256(pwd.encode()).hexdigest()
+        with open('master.csv', 'w') as f:
+            f.write(hashed)
+        print(f"{Colors.GREEN}✅ Clave guardada.{Colors.END}")
+        print(f"{Colors.YELLOW}▶️  Vuelve a ejecutar 'python3 start.py' para iniciar.{Colors.END}")
         sys.exit(0)
+
+# ============================================================================
+# Cloudflare Tunnel (cloudflared)
+# ============================================================================
+def check_cloudflared():
+    return shutil.which('cloudflared') is not None
+
+def install_cloudflared():
+    """Instala cloudflared según el sistema operativo (sin cuenta, solo binary)"""
+    sistema = get_system()
+    print(f"\n{Colors.BOLD}🌐 Instalando Cloudflare Tunnel (cloudflared)...{Colors.END}")
+    
+    if sistema == 'windows':
+        # Descargar el ejecutable de Windows
+        url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+        dest = os.path.join(os.path.dirname(sys.executable), 'cloudflared.exe')
+        try:
+            import urllib.request
+            print(f"  Descargando de {url}...")
+            urllib.request.urlretrieve(url, dest)
+            os.chmod(dest, 0o755)
+            # Agregar al PATH? mejor lo movemos a la carpeta actual
+            shutil.copy(dest, 'cloudflared.exe')
+            print(f"{Colors.GREEN}  cloudflared instalado en carpeta local{Colors.END}")
+            return True
+        except Exception as e:
+            print(f"{Colors.RED}  Error: {e}{Colors.END}")
+            return False
+    
+    elif sistema == 'linux':
+        distro = get_linux_distro()
+        if distro == 'debian-based':
+            # Añadir repo de Cloudflare
+            try:
+                subprocess.run(['sudo', 'mkdir', '-p', '--mode=0755', '/usr/share/keyrings'], check=False)
+                cmd = 'curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null'
+                subprocess.run(cmd, shell=True, check=True)
+                echo_cmd = 'echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list'
+                subprocess.run(echo_cmd, shell=True, check=True)
+                subprocess.run(['sudo', 'apt', 'update'], check=False)
+                subprocess.run(['sudo', 'apt', 'install', '-y', 'cloudflared'], check=True)
+                print(f"{Colors.GREEN}  cloudflared instalado vía apt{Colors.END}")
+                return True
+            except:
+                # Fallback: descargar binario
+                return install_cloudflared_binary()
+        elif distro == 'arch-based':
+            try:
+                subprocess.run(['sudo', 'pacman', '-S', '--noconfirm', 'cloudflared'], check=True)
+                print(f"{Colors.GREEN}  cloudflared instalado vía pacman{Colors.END}")
+                return True
+            except:
+                return install_cloudflared_binary()
+        elif distro == 'fedora':
+            try:
+                subprocess.run(['sudo', 'dnf', 'install', '-y', 'cloudflared'], check=True)
+                print(f"{Colors.GREEN}  cloudflared instalado vía dnf{Colors.END}")
+                return True
+            except:
+                return install_cloudflared_binary()
+        else:
+            return install_cloudflared_binary()
+    
+    elif sistema == 'darwin':
+        if shutil.which('brew'):
+            try:
+                subprocess.run(['brew', 'install', 'cloudflared'], check=True)
+                print(f"{Colors.GREEN}  cloudflared instalado vía Homebrew{Colors.END}")
+                return True
+            except:
+                return install_cloudflared_binary()
+        else:
+            return install_cloudflared_binary()
+    return False
+
+def install_cloudflared_binary():
+    """Descarga el binario directamente desde GitHub"""
+    sistema = get_system()
+    print(f"  Descargando binario cloudflared...")
+    if sistema == 'linux':
+        url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+        dest = 'cloudflared'
+    elif sistema == 'darwin':
+        url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64"
+        dest = 'cloudflared'
+    else:
+        return False
+    try:
+        import urllib.request
+        urllib.request.urlretrieve(url, dest)
+        os.chmod(dest, 0o755)
+        # Mover a /usr/local/bin si se puede
+        try:
+            subprocess.run(['sudo', 'mv', dest, '/usr/local/bin/cloudflared'], check=True)
+            print(f"{Colors.GREEN}  cloudflared instalado en /usr/local/bin{Colors.END}")
+        except:
+            # Dejar en carpeta actual y usar ./cloudflared
+            print(f"{Colors.GREEN}  cloudflared descargado en carpeta actual{Colors.END}")
+        return True
+    except Exception as e:
+        print(f"{Colors.RED}  Error descargando binario: {e}{Colors.END}")
+        return False
+
+def run_cloudflare_tunnel(port=5000):
+    """Inicia un túnel rápido de Cloudflare (trycloudflare.com)"""
+    cloudflared_cmd = shutil.which('cloudflared')
+    if not cloudflared_cmd:
+        cloudflared_cmd = './cloudflared' if os.path.exists('./cloudflared') else None
+    if not cloudflared_cmd:
+        print(f"{Colors.RED}No se encontró cloudflared. No se puede crear túnel.{Colors.END}")
+        return None
+    
+    print(f"{Colors.CYAN}Iniciando túnel Cloudflare...{Colors.END}")
+    # Comando para túnel rápido (sin autenticación, URL aleatoria)
+    cmd = [cloudflared_cmd, 'tunnel', '--url', f'http://localhost:{port}']
+    try:
+        # Lanzar en segundo plano y capturar salida para extraer URL
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        # Leer líneas hasta encontrar la URL
+        url = None
+        for line in process.stdout:
+            print(f"[cloudflared] {line.strip()}")
+            if 'https://' in line and '.trycloudflare.com' in line:
+                # Extraer URL
+                import re
+                match = re.search(r'(https://[a-zA-Z0-9\-]+\.trycloudflare\.com)', line)
+                if match:
+                    url = match.group(1)
+                    break
+        if url:
+            print(f"\n{Colors.GREEN}{Colors.BOLD}🌍 Túnel Cloudflare activo: {url}{Colors.END}")
+            print(f"   Comparte esta URL para acceder remotamente a XONINAS\n")
+            # Abrir navegador con la URL
+            webbrowser.open(url)
+        else:
+            print(f"{Colors.YELLOW}No se pudo detectar la URL del túnel. Revisa la salida arriba.{Colors.END}")
+        return process
+    except Exception as e:
+        print(f"{Colors.RED}Error al iniciar cloudflared: {e}{Colors.END}")
+        return None
 
 # ============================================================================
 # Autoreinicio y healthcheck
 # ============================================================================
 def is_server_alive(port=5000):
-    """Verifica si el servidor responde en /health"""
     try:
         import requests
         r = requests.get(f"http://127.0.0.1:{port}/health", timeout=5)
@@ -341,44 +437,36 @@ def is_server_alive(port=5000):
         return False
 
 def cleanup_port(port=5000):
-    """Limpia el puerto si está en uso (Linux/macOS)"""
     if get_system() == 'windows':
         return
     try:
         result = subprocess.run(f"lsof -ti:{port}", shell=True, capture_output=True, text=True)
         if result.stdout.strip():
-            pids = result.stdout.strip().split('\n')
-            for pid in pids:
-                print(f"{Colors.YELLOW}  Deteniendo proceso PID {pid} en puerto {port}{Colors.END}")
+            for pid in result.stdout.strip().split('\n'):
                 os.kill(int(pid), signal.SIGTERM)
             time.sleep(2)
     except:
         pass
 
-def run_server():
-    """Ejecuta el servidor con autoreinicio"""
+def run_server(cloudflare_enabled=False):
     print(f"\n{Colors.BOLD}🚀 Iniciando servidor XONINAS (Waitress)...{Colors.END}")
-    print(f"  Threads: 6")
-    print(f"  Puerto: 5000")
-    print(f"  Healthcheck: /health cada 10 segundos")
-    print(f"  Autoreinicio: activado")
-    print(f"{Colors.YELLOW}  Para detener: Ctrl+C{Colors.END}")
-    print("-" * 60)
-
     cleanup_port(5000)
-
     cmd = [
         sys.executable, '-m', 'waitress',
-        '--host=127.0.0.1',
+        '--host=0.0.0.0',
         '--port=5000',
         '--threads=6',
         '--connection-limit=100',
         '--channel-timeout=300',
         'xoninas:app'
     ]
-
     process = None
+    cloudflare_process = None
     restart_count = 0
+    
+    # Iniciar túnel si se solicita
+    if cloudflare_enabled:
+        cloudflare_process = run_cloudflare_tunnel(5000)
     
     while True:
         if process is None or process.poll() is not None:
@@ -398,16 +486,12 @@ def run_server():
             time.sleep(10)
 
 # ============================================================================
-# Función principal
+# Menú principal
 # ============================================================================
 def main():
-    # Limpiar pantalla
     os.system('clear' if get_system() != 'windows' else 'cls')
-    
-    # Banner
     print_banner()
     
-    # Mostrar información del sistema
     sistema = get_system()
     distro = get_linux_distro()
     print(f"{Colors.BOLD}Sistema operativo:{Colors.END} {sistema}")
@@ -416,66 +500,64 @@ def main():
     print(f"{Colors.BOLD}Python:{Colors.END} {sys.version.split()[0]}")
     print(f"{Colors.BOLD}Directorio:{Colors.END} {os.getcwd()}")
     
-    # Verificar que existe xoninas.py
+    # Verificar xoninas.py
     if not os.path.exists('xoninas.py'):
         print(f"\n{Colors.RED}❌ Error: No se encuentra xoninas.py{Colors.END}")
-        print("   Asegúrate de que xoninas.py está en la misma carpeta.")
         sys.exit(1)
     
     # Verificar Python
     if not check_python():
-        print(f"\n{Colors.RED}❌ Python no está instalado o no está en el PATH{Colors.END}")
-        print("   Descarga Python desde: https://www.python.org/downloads/")
-        if sistema == 'windows':
-            print("   IMPORTANTE: Marca 'Add Python to PATH' durante la instalación.")
+        print(f"\n{Colors.RED}❌ Python no instalado{Colors.END}")
         sys.exit(1)
     
-    # Verificar pip e instalarlo si falta
+    # Verificar pip
     if not check_pip():
-        print(f"\n{Colors.YELLOW}⚠️ Pip no está instalado. Intentando instalarlo...{Colors.END}")
+        print(f"\n{Colors.YELLOW}⚠️ Pip no encontrado. Instalando...{Colors.END}")
         if sistema == 'linux':
             if not install_pip_linux():
-                print(f"{Colors.RED}No se pudo instalar pip automáticamente.{Colors.END}")
-                print("   Instala pip manualmente según tu distribución y vuelve a ejecutar.")
+                print(f"{Colors.RED}No se pudo instalar pip. Instálalo manualmente.{Colors.END}")
                 sys.exit(1)
         elif sistema == 'windows':
             if not install_pip_windows():
-                print(f"{Colors.RED}No se pudo instalar pip automáticamente.{Colors.END}")
-                print("   Ejecuta el script como administrador o instala pip manualmente.")
+                print(f"{Colors.RED}No se pudo instalar pip. Ejecuta como administrador.{Colors.END}")
                 sys.exit(1)
-        elif sistema == 'darwin':
-            print(f"{Colors.YELLOW}En macOS, instala pip con: python3 -m ensurepip --upgrade{Colors.END}")
-            respuesta = input("¿Intentar instalarlo ahora? (s/n): ")
-            if respuesta.lower() == 's':
-                try:
-                    subprocess.run([sys.executable, '-m', 'ensurepip', '--upgrade'], check=True)
-                    print(f"{Colors.GREEN}Pip instalado correctamente{Colors.END}")
-                except:
-                    print(f"{Colors.RED}Error instalando pip. Instálalo manualmente con: brew install python3{Colors.END}")
-                    sys.exit(1)
-            else:
-                print("No se puede continuar sin pip. Saliendo.")
-                sys.exit(1)
+        else:
+            print(f"{Colors.YELLOW}Instala pip manualmente y vuelve a ejecutar.{Colors.END}")
+            sys.exit(1)
     
-    # Verificar dependencias
+    # Dependencias
     missing = check_dependencies()
     if missing:
-        print(f"\n{Colors.YELLOW}⚠️ Faltan {len(missing)} dependencias.{Colors.END}")
-        respuesta = input("¿Deseas instalarlas automáticamente? (s/n): ")
-        if respuesta.lower() == 's':
+        print(f"\n{Colors.YELLOW}Faltan {len(missing)} dependencias.{Colors.END}")
+        resp = input("¿Instalar automáticamente? (s/n): ")
+        if resp.lower() == 's':
             if not install_dependencies(missing):
                 print(f"{Colors.YELLOW}Continuando a pesar de errores...{Colors.END}")
         else:
-            print(f"{Colors.YELLOW}No se instalarán las dependencias. El programa podría fallar.{Colors.END}")
-            print("   Puedes instalarlas manualmente con:")
-            print(f"   {get_pip_command()} install {' '.join(REQUISITOS)} {' '.join(get_install_flags())}")
+            print(f"{Colors.YELLOW}No se instalarán. El programa podría fallar.{Colors.END}")
     
-    # Configuración inicial (clave maestra)
-    run_initial_config()
+    # Configuración inicial (ruta y clave maestra)
+    run_initial_setup()
     
-    # Iniciar servidor
+    # Preguntar por Cloudflare Tunnel
+    print(f"\n{Colors.BOLD}🌐 ¿Quieres exponer XONINAS a Internet mediante Cloudflare Tunnel?{Colors.END}")
+    print("   (Generará una URL pública como https://xxxx.trycloudflare.com, sin registro)")
+    resp = input("¿Activar túnel Cloudflare? (s/n): ")
+    cloudflare_enabled = resp.lower() == 's'
+    
+    if cloudflare_enabled and not check_cloudflared():
+        print(f"\n{Colors.YELLOW}Cloudflared no está instalado. Instalando...{Colors.END}")
+        if install_cloudflared():
+            print(f"{Colors.GREEN}Cloudflared listo.{Colors.END}")
+        else:
+            print(f"{Colors.RED}No se pudo instalar cloudflared. El túnel no estará disponible.{Colors.END}")
+            cloudflare_enabled = False
+    elif cloudflare_enabled and check_cloudflared():
+        print(f"{Colors.GREEN}Cloudflared ya instalado.{Colors.END}")
+    
+    # Iniciar servidor (con o sin túnel)
     try:
-        run_server()
+        run_server(cloudflare_enabled)
     except KeyboardInterrupt:
         print(f"\n{Colors.YELLOW}🛑 Servidor detenido por el usuario{Colors.END}")
         sys.exit(0)
