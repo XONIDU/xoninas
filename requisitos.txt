@@ -1,0 +1,7 @@
+# XONINAS - NAS Local con Carpetas Protegidas
+# Dependencias necesarias para ejecutar el sistema
+
+Flask==2.3.3
+Werkzeug==2.3.0
+waitress==2.1.2
+requests==2.31.0
