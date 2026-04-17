@@ -1,6 +1,6 @@
-# XONINAS 2026 v1.5.0
+# XONINAS 2026 v4.2.0
 
-**Sistema NAS Local con Carpetas Protegidas y Almacenamiento en Ruta Elegida**
+**Sistema NAS Local con Carpetas Protegidas y Acceso Remoto Gratuito**
 
 Desarrollado por: Darian Alberto Camacho Salas  
 Organización: XONIDU  
@@ -11,14 +11,16 @@ GitHub: @XONIDU
 
 ## 📋 Descripción
 
-**XONINAS** es una aplicación web que convierte tu ordenador en un **servidor NAS (Network Attached Storage)** completo, permitiéndote:
+**XONINAS** es una aplicación web que convierte tu ordenador en un **servidor NAS (Network Attached Storage)** completo, con:
 
-- Crear **carpetas protegidas por contraseña** (o sin contraseña)
-- Subir, descargar y eliminar archivos desde cualquier dispositivo de tu red local
-- Elegir **dónde guardar físicamente los archivos** (disco externo, unidad de red, carpeta personalizada)
-- Acceder desde cualquier navegador en la misma red
+- **Carpetas protegidas por contraseña** (o sin contraseña)
+- **Subida, descarga y gestión de archivos** desde cualquier dispositivo
+- **Elección de ruta de almacenamiento** (disco externo, unidad de red, carpeta personalizada)
+- **Acceso en red local** (WiFi/Ethernet) sin configuración adicional
+- **Acceso remoto gratuito** mediante túnel Cloudflare (URL pública `*.trycloudflare.com`)
+- **Interfaz moderna** con temática oscura (negroneón, verde y morado)
 
-Ideal para uso doméstico, pequeñas oficinas, Raspberry Pi o como almacenamiento personal seguro. Todo el código es abierto y funciona completamente **sin servicios en la nube**.
+Ideal para uso doméstico, pequeñas oficinas, Raspberry Pi o como nube privada. Todo el código es abierto y funciona completamente **sin servicios en la nube** (aunque puedes añadir Cloudflare opcionalmente).
 
 El proyecto es una iniciativa de **XONIDU**, organización dedicada al código abierto, automatización y democratización del acceso tecnológico.
 
@@ -30,13 +32,14 @@ El proyecto es una iniciativa de **XONIDU**, organización dedicada al código a
 |----------------|-------------|
 | 🗂️ **Carpetas con o sin contraseña** | Cada carpeta puede tener su propia clave (hash SHA-256) |
 | 📁 **Selección de ruta de almacenamiento** | Elige dónde guardar los archivos (disco externo, red, etc.) |
-| 🌐 **Acceso en red local** | Comparte archivos con cualquier dispositivo de tu WiFi/Ethernet |
+| 🌐 **Acceso en red local** | Comparte archivos con cualquier dispositivo de tu red |
+| 🌍 **Acceso remoto gratuito** | Túnel Cloudflare sin registro (URL `*.trycloudflare.com`) |
 | 🔐 **Clave maestra de acceso** | Protege todo el NAS con una única contraseña |
 | 🚀 **Subida sin límite práctico** | Por defecto hasta 10 GB por archivo (ajustable) |
 | 📱 **Diseño responsive** | Funciona en móviles, tablets y ordenadores |
 | 🛡️ **Autoreinicio y healthcheck** | El servidor se recupera automáticamente si falla |
 | 💾 **Almacenamiento en CSV** | Configuración ligera, fácil de respaldar y editar |
-| ⚡ **Sin base de datos externa** | Solo archivos planos, mínimo consumo de recursos |
+| ⚡ **Instalación automática** | Detecta SO, instala pip, dependencias y cloudflared |
 
 ---
 
@@ -66,11 +69,14 @@ El archivo `start.py` hace TODO por ti:
 
 ✅ Detecta tu sistema operativo y distribución (Windows, Linux, macOS)  
 ✅ Instala **pip automáticamente** si no está presente (usa apt, pacman, dnf, yum, zypper o ensurepip)  
-✅ Instala las dependencias con los flags correctos (`--break-system-packages` en Arch/Fedora, `--user` en otros)  
+✅ Instala las dependencias (Flask, Werkzeug, Waitress, requests) con los flags correctos  
 ✅ Te pregunta la **ruta de almacenamiento** (puedes usar un disco externo o ruta de red)  
 ✅ Configura la **clave maestra**  
+✅ Pregunta si quieres activar **Cloudflare Tunnel** para acceso remoto gratuito  
+✅ Instala `cloudflared` automáticamente si lo aceptas  
 ✅ Inicia el servidor con autoreinicio y healthcheck  
-✅ Hace el NAS accesible en toda tu red local (IP `0.0.0.0`)
+✅ Hace el NAS accesible en toda tu red local (`0.0.0.0`)  
+✅ Muestra la URL pública de Cloudflare (si se activó) y la abre en el navegador
 
 ### 🪟 Para Windows
 
@@ -104,7 +110,10 @@ Al ejecutar por primera vez, el sistema te guiará paso a paso:
 2. **Establecimiento de clave maestra**  
    Elige una contraseña para acceder al NAS.
 
-3. **Inicio del servidor**  
+3. **Activación de Cloudflare Tunnel (opcional)**  
+   Si respondes `s`, se instalará `cloudflared` y se generará una URL pública como `https://xxxx.trycloudflare.com`.
+
+4. **Inicio del servidor**  
    Tras configurar, el programa se cierra. **Vuelve a ejecutar `start.py`** para lanzar el servidor.
 
 ### Acceso desde la red local
@@ -118,12 +127,22 @@ Al ejecutar por primera vez, el sistema te guiará paso a paso:
    ```
    Normalmente será algo como `192.168.1.45` o `10.0.0.5`.
 
-2. Desde **cualquier otro dispositivo** (móvil, tablet, otro PC) en la misma red, abre el navegador y ve a:
+2. Desde **cualquier otro dispositivo** en la misma red, abre el navegador y ve a:
    ```
    http://192.168.1.45:5000
    ```
 
 3. Introduce la **clave maestra** y ya puedes crear carpetas y subir archivos.
+
+### Acceso remoto (con Cloudflare)
+
+Si activaste el túnel, verás en la terminal una línea como:
+
+```
+🌍 Túnel Cloudflare activo: https://ejemplo-aleatorio.trycloudflare.com
+```
+
+Puedes **compartir esa URL** con quien quieras (o usarla tú mismo desde cualquier red, incluso datos móviles). Cualquier persona con la URL y la clave maestra podrá acceder.
 
 ### Pantalla principal (listado de carpetas)
 
@@ -252,6 +271,13 @@ El límite por defecto es 10 GB. Para cambiarlo, edita en `xoninas.py` la línea
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # Cambia el 10 por el valor deseado (en GB)
 ```
 
+### ❌ El túnel Cloudflare no funciona
+
+- Asegúrate de tener conexión a Internet.
+- En Windows, puede que necesites ejecutar la terminal como administrador para instalar `cloudflared`.
+- Prueba a descargar manualmente `cloudflared` desde [GitHub](https://github.com/cloudflare/cloudflared/releases) y colócalo en la misma carpeta que `start.py`.
+- La URL `*.trycloudflare.com` es temporal; al cerrar el programa se destruye.
+
 ---
 
 ## ✅ LO QUE PUEDES HACER (Y LO QUE NO)
@@ -260,9 +286,10 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # Cambia el 10 por e
 |----------------------------------------------------|-------------------------------------------------------------|
 | Usar XONINAS como NAS personal o en oficina       | Distribuir malware o contenido ilegal                      |
 | Compartir el acceso a carpetas con contraseña     | Eliminar los créditos de XONIDU                            |
-| Almacenar cualquier tipo de archivo               | Exponer el NAS a Internet sin HTTPS                        |
+| Almacenar cualquier tipo de archivo               | Exponer el NAS a Internet sin HTTPS (el túnel Cloudflare ya cifra la conexión cliente-Cloudflare, pero el tramo local sigue siendo HTTP) |
 | Modificar el código y adaptarlo a tus necesidades | Vender el código como propio                               |
 | Usar discos externos o unidades de red            | Usar rutas de red no montadas previamente                  |
+| Acceder remotamente mediante Cloudflare Tunnel    | Usar el túnel para actividades ilegales                    |
 
 ---
 
@@ -274,6 +301,7 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # Cambia el 10 por e
 - Waitress 2.1.2 (servidor de producción)
 - Espacio en disco suficiente en la ruta elegida
 - Permisos de escritura en la ruta de almacenamiento
+- (Opcional) Conexión a Internet para Cloudflare Tunnel
 
 ---
 
@@ -303,9 +331,10 @@ Este proyecto es de código abierto. Siéntete libre de modificarlo, adaptarlo y
 
 ```
 ╔══════════════════════════════════════════════════════════╗
-║                     XONINAS 2026 v1.0.0                  ║
+║                     XONINAS 2026 v4.2.0                  ║
 ║              NAS Local con Carpetas Protegidas            ║
 ║                Almacenamiento en ruta elegida             ║
+║                Acceso remoto con Cloudflare               ║
 ║                                                           ║
 ║               Desarrollado por: Darian Alberto            ║
 ║                      Camacho Salas                        ║
@@ -313,5 +342,6 @@ Este proyecto es de código abierto. Siéntete libre de modificarlo, adaptarlo y
 ╚════════════════════════════════════════════════════════════╝
 ```
 
-**XONINAS** – Tu almacenamiento local, simple y seguro.  
+**XONINAS** – Tu almacenamiento local, simple y seguro, accesible desde cualquier lugar.  
 **XONIDU** – Distribuyendo conocimiento, construyendo comunidad.
+
