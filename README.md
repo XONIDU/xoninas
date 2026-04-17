@@ -1,6 +1,6 @@
-# XONINAS 2026 v1.0.0
+# XONINAS 2026 v1.5.0
 
-**Sistema NAS Local con Carpetas Protegidas**
+**Sistema NAS Local con Carpetas Protegidas y Almacenamiento en Ruta Elegida**
 
 Desarrollado por: Darian Alberto Camacho Salas  
 Organización: XONIDU  
@@ -11,25 +11,32 @@ GitHub: @XONIDU
 
 ## 📋 Descripción
 
-**XONINAS** es una aplicación web desarrollada en Python con Flask que convierte tu ordenador en un **NAS (Network Attached Storage) local**, permitiéndote crear carpetas protegidas por contraseña, subir y descargar archivos, todo desde una interfaz moderna y elegante con temática oscura (negro, verde neón y morado).
+**XONINAS** es una aplicación web que convierte tu ordenador en un **servidor NAS (Network Attached Storage)** completo, permitiéndote:
 
-Ideal para uso doméstico, pequeñas oficinas o como almacenamiento personal seguro. No requiere servicios en la nube ni configuración compleja: todo se ejecuta localmente en tu red.
+- Crear **carpetas protegidas por contraseña** (o sin contraseña)
+- Subir, descargar y eliminar archivos desde cualquier dispositivo de tu red local
+- Elegir **dónde guardar físicamente los archivos** (disco externo, unidad de red, carpeta personalizada)
+- Acceder desde cualquier navegador en la misma red
 
-El proyecto es una iniciativa de **XONIDU**, una organización dedicada al desarrollo de código abierto con énfasis en automatización, optimización de recursos y democratización del acceso a herramientas tecnológicas.
+Ideal para uso doméstico, pequeñas oficinas, Raspberry Pi o como almacenamiento personal seguro. Todo el código es abierto y funciona completamente **sin servicios en la nube**.
+
+El proyecto es una iniciativa de **XONIDU**, organización dedicada al código abierto, automatización y democratización del acceso tecnológico.
 
 ---
 
 ## ✨ Características Principales
 
-- **Configuración inicial por terminal**: Al ejecutar por primera vez, solicita la **clave maestra** de acceso al NAS.
-- **Autenticación robusta**: Clave maestra para acceder al sistema + contraseñas opcionales por carpeta.
-- **Gestión de carpetas**: Crea, elimina y protege carpetas con contraseña (o déjalas abiertas).
-- **Subida y descarga de archivos**: Sube cualquier tipo de archivo (sin límite práctico de tamaño, hasta 10 GB por defecto).
-- **Protección por carpeta**: Cada carpeta puede tener su propia contraseña, almacenada de forma segura (hash SHA-256).
-- **Almacenamiento en CSV**: Las carpetas y sus hashes se guardan en `folders.csv`; la clave maestra en `master.csv`.
-- **Interfaz bonita y responsive**: Diseño inspirado en openmediavault, totalmente adaptable a móvil y escritorio.
-- **Servidor robusto**: Usa Waitress con autoreinicio y healthcheck para manejar múltiples conexiones.
-- **Sin dependencias externas**: Todo el almacenamiento es local, sin necesidad de bases de datos ni servicios cloud.
+| Característica | Descripción |
+|----------------|-------------|
+| 🗂️ **Carpetas con o sin contraseña** | Cada carpeta puede tener su propia clave (hash SHA-256) |
+| 📁 **Selección de ruta de almacenamiento** | Elige dónde guardar los archivos (disco externo, red, etc.) |
+| 🌐 **Acceso en red local** | Comparte archivos con cualquier dispositivo de tu WiFi/Ethernet |
+| 🔐 **Clave maestra de acceso** | Protege todo el NAS con una única contraseña |
+| 🚀 **Subida sin límite práctico** | Por defecto hasta 10 GB por archivo (ajustable) |
+| 📱 **Diseño responsive** | Funciona en móviles, tablets y ordenadores |
+| 🛡️ **Autoreinicio y healthcheck** | El servidor se recupera automáticamente si falla |
+| 💾 **Almacenamiento en CSV** | Configuración ligera, fácil de respaldar y editar |
+| ⚡ **Sin base de datos externa** | Solo archivos planos, mínimo consumo de recursos |
 
 ---
 
@@ -45,23 +52,25 @@ xoninas/
 │   ├── index.html           # Listado de carpetas
 │   ├── folder_auth.html     # Solicitar contraseña de carpeta
 │   └── folder_contents.html # Gestor de archivos dentro de carpeta
-├── storage/                 # Directorio donde se guardan las carpetas y archivos
+├── config.csv               # Ruta de almacenamiento elegida por el usuario
 ├── master.csv               # Clave maestra (hash SHA-256)
-└── folders.csv              # Lista de carpetas y sus hashes de contraseña
+├── folders.csv              # Lista de carpetas y sus hashes de contraseña
+└── (la ruta que elijas)     # Directorio raíz donde se guardan los archivos
 ```
 
 ---
 
 ## 🚀 ASÍ DE FÁCIL: SOLO EJECUTA `start.py`
 
-¡Ya no necesitas hacer nada más! El archivo `start.py` hace TODO por ti:
+El archivo `start.py` hace TODO por ti:
 
-✅ Detecta automáticamente tu sistema operativo  
-✅ Verifica qué dependencias faltan (Flask, Werkzeug, Waitress)  
-✅ Las instala con los comandos correctos (soporta Arch Linux con `--break-system-packages`)  
-✅ Ejecuta la configuración inicial si no existe `master.csv`  
+✅ Detecta tu sistema operativo y distribución (Windows, Linux, macOS)  
+✅ Instala **pip automáticamente** si no está presente (usa apt, pacman, dnf, yum, zypper o ensurepip)  
+✅ Instala las dependencias con los flags correctos (`--break-system-packages` en Arch/Fedora, `--user` en otros)  
+✅ Te pregunta la **ruta de almacenamiento** (puedes usar un disco externo o ruta de red)  
+✅ Configura la **clave maestra**  
 ✅ Inicia el servidor con autoreinicio y healthcheck  
-✅ Abre el navegador automáticamente en `http://127.0.0.1:5000`
+✅ Hace el NAS accesible en toda tu red local (IP `0.0.0.0`)
 
 ### 🪟 Para Windows
 
@@ -77,83 +86,107 @@ python3 start.py
 
 ---
 
-## 📦 ¿QUÉ HACE `start.py` POR DENTRO?
-
-Cuando ejecutas `start.py`, automáticamente:
-
-1. 🔍 Detecta si estás en Windows, Linux o Mac  
-2. 📋 Verifica que las dependencias (Flask, Werkzeug, Waitress) estén instaladas  
-3. 📥 Las instala con el comando `pip` adecuado (en Arch usa `--break-system-packages`)  
-4. ⚙️ Ejecuta la configuración inicial si no existe `master.csv` (te pedirá la clave maestra por terminal)  
-5. 🚀 Inicia el servidor con Waitress (4 threads, timeout largo)  
-6. 🔄 Monitoriza el servidor y lo reinicia si falla  
-7. 🌐 Abre el navegador automáticamente en `http://127.0.0.1:5000`
-
----
-
 ## 🎨 CÓMO USAR XONINAS
 
 ### Primera ejecución (configuración)
 
-Al ejecutar por primera vez, el sistema te pedirá por **terminal**:
+Al ejecutar por primera vez, el sistema te guiará paso a paso:
 
-```
-==================================================
-    CONFIGURACIÓN INICIAL - CLAVE MAESTRA
-==================================================
-Clave maestra: ************
-```
+1. **Selección de ruta de almacenamiento**  
+   Puedes dejar la ruta por defecto (`storage`) o escribir otra, por ejemplo:
+   ```
+   /media/usb/nas
+   D:\NAS_Archivos
+   \\192.168.1.100\shared_folder
+   ```
+   > **Nota**: Las rutas de red deben estar montadas previamente en el sistema.
 
-Introduce una contraseña que usarás para acceder al NAS (ej: `admin123`).  
-La aplicación se cerrará después de guardar la clave. **Vuelve a ejecutar `python3 start.py`** para iniciar el servidor.
+2. **Establecimiento de clave maestra**  
+   Elige una contraseña para acceder al NAS.
 
-### Acceso al NAS
+3. **Inicio del servidor**  
+   Tras configurar, el programa se cierra. **Vuelve a ejecutar `start.py`** para lanzar el servidor.
 
-1. Abre tu navegador en `http://127.0.0.1:5000` (usa **127.0.0.1** en lugar de `localhost` para evitar problemas con cookies).
-2. Introduce la **clave maestra** que configuraste.
-3. Ya estás dentro del panel principal.
+### Acceso desde la red local
+
+1. Averigua la **IP de tu ordenador**:
+   ```bash
+   # Linux/macOS
+   hostname -I
+   # Windows
+   ipconfig
+   ```
+   Normalmente será algo como `192.168.1.45` o `10.0.0.5`.
+
+2. Desde **cualquier otro dispositivo** (móvil, tablet, otro PC) en la misma red, abre el navegador y ve a:
+   ```
+   http://192.168.1.45:5000
+   ```
+
+3. Introduce la **clave maestra** y ya puedes crear carpetas y subir archivos.
 
 ### Pantalla principal (listado de carpetas)
 
-- **Crear carpeta**: Escribe un nombre y (opcionalmente) una contraseña. Si dejas la contraseña vacía, la carpeta será pública (sin acceso restringido).
-- **Entrar a una carpeta**: Si está protegida, se te pedirá la contraseña. Una vez ingresada, la sesión recuerda el acceso.
-- **Eliminar carpeta**: Borra la carpeta y todo su contenido (no se puede deshacer).
+- **Crear carpeta**: escribe un nombre y (opcionalmente) una contraseña.  
+  - Si dejas la contraseña vacía → carpeta **pública** (sin restricción).  
+  - Si pones contraseña → carpeta **protegida** (pedirá la clave al entrar).
+- **Entrar a una carpeta**: si está protegida, se te pedirá la contraseña una sola vez por sesión.
+- **Eliminar carpeta**: borra la carpeta y todo su contenido (no se puede recuperar).
 
 ### Dentro de una carpeta
 
-- **Subir archivos**: Botón "Subir archivo" – puedes subir cualquier tipo de archivo (el límite por defecto es 10 GB).
-- **Descargar archivos**: Haz clic en "Descargar" junto al archivo.
-- **Eliminar archivos**: Botón "Eliminar" (confirmación previa).
+- **Subir archivos**: botón "Subir archivo". El límite por defecto es 10 GB (ajustable en `xoninas.py`).
+- **Descargar archivos**: clic en "Descargar" junto al archivo.
+- **Eliminar archivos**: clic en "Eliminar" (confirmación previa).
 
 ### Cierre de sesión
 
-Usa el botón **"Cerrar sesión"** en la parte superior. Se borrará tanto la clave maestra como los accesos temporales a carpetas protegidas.
+Usa el botón **"Cerrar sesión"** para salir. Se borrará el acceso a la clave maestra y los permisos temporales de carpetas protegidas.
 
 ---
 
 ## 🛠️ CONFIGURACIÓN MANUAL (archivos CSV)
 
-### `master.csv`
+### `config.csv` – Ruta de almacenamiento
 
-Almacena la **clave maestra** en forma de hash SHA-256.  
-Si pierdes esta clave, elimina el archivo y reinicia el programa para crear una nueva.
+```csv
+storage_path,/home/usuario/XONINAS_DATA
+```
 
-### `folders.csv`
+Puedes editar este archivo (con el servidor detenido) para cambiar la ubicación donde se guardan todos los archivos.
+
+### `master.csv` – Clave maestra
+
+Contiene el hash SHA-256 de la clave maestra. Si pierdes la clave, elimina este archivo y reinicia para crear una nueva (perderás el acceso a las carpetas protegidas).
+
+### `folders.csv` – Lista de carpetas
 
 | Campo           | Descripción                                                                 |
 |-----------------|-----------------------------------------------------------------------------|
 | `name`          | Nombre de la carpeta (visible en la web)                                    |
-| `password_hash` | Hash SHA-256 de la contraseña de la carpeta (vacío si no tiene contraseña) |
+| `password_hash` | Hash SHA-256 de la contraseña (vacío si no tiene)                          |
 | `created`       | Fecha y hora de creación                                                    |
 
-Puedes editar este archivo manualmente (con un editor de texto) mientras el servidor no esté corriendo.
+Puedes editar este CSV manualmente para añadir o quitar carpetas.
 
 ---
 
 ## 📂 ¿DÓNDE SE GUARDAN LOS ARCHIVOS?
 
-Todos los archivos subidos se almacenan en la carpeta `storage/` dentro del directorio de XONINAS. Cada carpeta creada desde la web corresponde a un subdirectorio dentro de `storage/`.  
-Puedes copiar archivos directamente a esas carpetas usando el explorador de archivos de tu sistema; aparecerán automáticamente en la interfaz web.
+Todos los archivos se guardan en la **ruta que elegiste durante la configuración inicial**.  
+Dentro de esa ruta, cada carpeta creada desde la web es un subdirectorio con su nombre.
+
+Ejemplo:
+```
+Ruta elegida: /media/disco_externo/XONINAS
+Contenido:
+  /media/disco_externo/XONINAS/
+    ├── Documentos/
+    ├── Fotos/
+    └── Videos/
+```
+
+Puedes copiar archivos directamente en esas carpetas usando el explorador de archivos del sistema; aparecerán automáticamente en la interfaz web.
 
 ---
 
@@ -164,40 +197,56 @@ Puedes copiar archivos directamente a esas carpetas usando el explorador de arch
 - Descarga Python desde [python.org](https://www.python.org/downloads/)
 - En Windows, **marca "Add Python to PATH"** durante la instalación.
 
-### ❌ El servidor no responde o "Address already in use"
+### ❌ Error "pip no encontrado" en Linux
+
+El script `start.py` intenta instalar pip automáticamente. Si falla, instálalo manualmente:
 
 ```bash
-# Detener el proceso que usa el puerto 5000 (Linux/macOS)
+# Debian/Ubuntu/Mint
+sudo apt update && sudo apt install python3-pip
+
+# Arch/Manjaro
+sudo pacman -S python-pip
+
+# Fedora
+sudo dnf install python3-pip
+
+# CentOS/RHEL
+sudo yum install python3-pip
+```
+
+### ❌ El servidor no es accesible desde otros dispositivos
+
+- Asegúrate de que el servidor se inició con `host='0.0.0.0'` (por defecto en el nuevo código).
+- Verifica el **firewall** del equipo que ejecuta XONINAS:
+  - Linux (ufw): `sudo ufw allow 5000/tcp`
+  - Windows: permite la aplicación en el Firewall de Windows Defender
+- Comprueba que los dispositivos están en la **misma red** (mismo router, mismo rango IP).
+
+### ❌ La ruta de almacenamiento elegida no se puede escribir
+
+El script intentará crearla, pero si no tiene permisos, el servidor fallará. Asegúrate de que el usuario que ejecuta XONINAS tenga permisos de lectura/escritura en esa ruta.
+
+### ❌ Error "Address already in use" (puerto 5000 ocupado)
+
+```bash
+# Linux/macOS
 sudo fuser -k 5000/tcp
 
-# Reiniciar el servidor
-python3 start.py
+# Windows
+netstat -ano | findstr :5000
+taskkill /PID <PID> /F
 ```
-
-### ❌ No se encuentra `master.csv`
-
-Ejecuta `python3 start.py` de nuevo. Si no aparece la configuración inicial, elimina `master.csv` manualmente y vuelve a ejecutar.
-
-### ❌ Error de permisos en Linux
-
-```bash
-chmod +x start.py
-python3 start.py
-```
-
-### ❌ Puerto 5000 en uso
-
-Cambia el puerto en `start.py` (línea `--port=5000`) y en `xoninas.py` (línea `serve(app, host='127.0.0.1', port=5000, ...)`). Luego reinicia.
 
 ### ❌ La sesión no se guarda (vuelve a pedir login)
 
-- Usa **`http://127.0.0.1:5000`** en lugar de `localhost`.
+- Usa `http://127.0.0.1:5000` o `http://<tu-ip>:5000` (no `localhost`).
 - Prueba en modo incógnito o con otro navegador.
-- Verifica que las cookies no estén bloqueadas para `127.0.0.1`.
+- Borra las cookies del sitio.
 
 ### ❌ No puedo subir archivos grandes
 
-El límite por defecto es 10 GB. Si necesitas más, edita en `xoninas.py` la línea:
+El límite por defecto es 10 GB. Para cambiarlo, edita en `xoninas.py` la línea:
 
 ```python
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # Cambia el 10 por el valor deseado (en GB)
@@ -211,8 +260,9 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # Cambia el 10 por e
 |----------------------------------------------------|-------------------------------------------------------------|
 | Usar XONINAS como NAS personal o en oficina       | Distribuir malware o contenido ilegal                      |
 | Compartir el acceso a carpetas con contraseña     | Eliminar los créditos de XONIDU                            |
+| Almacenar cualquier tipo de archivo               | Exponer el NAS a Internet sin HTTPS                        |
 | Modificar el código y adaptarlo a tus necesidades | Vender el código como propio                               |
-| Almacenar cualquier tipo de archivo               | Usar en entornos donde se requiera cifrado de extremo a extremo (no incluye HTTPS por defecto) |
+| Usar discos externos o unidades de red            | Usar rutas de red no montadas previamente                  |
 
 ---
 
@@ -221,8 +271,9 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 * 1024  # Cambia el 10 por e
 - Python 3.8 o superior
 - Flask 2.3.3
 - Werkzeug 2.3.0
-- Waitress 2.1.2 (para el servidor)
-- Espacio en disco para almacenar los archivos subidos
+- Waitress 2.1.2 (servidor de producción)
+- Espacio en disco suficiente en la ruta elegida
+- Permisos de escritura en la ruta de almacenamiento
 
 ---
 
@@ -254,6 +305,7 @@ Este proyecto es de código abierto. Siéntete libre de modificarlo, adaptarlo y
 ╔══════════════════════════════════════════════════════════╗
 ║                     XONINAS 2026 v1.0.0                  ║
 ║              NAS Local con Carpetas Protegidas            ║
+║                Almacenamiento en ruta elegida             ║
 ║                                                           ║
 ║               Desarrollado por: Darian Alberto            ║
 ║                      Camacho Salas                        ║
@@ -263,4 +315,3 @@ Este proyecto es de código abierto. Siéntete libre de modificarlo, adaptarlo y
 
 **XONINAS** – Tu almacenamiento local, simple y seguro.  
 **XONIDU** – Distribuyendo conocimiento, construyendo comunidad.
-
