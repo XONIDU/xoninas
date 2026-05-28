@@ -46,7 +46,7 @@ cd xoninas
 python3 start.py
 ```
 
-> **Nota:** Esta función te servirá para instalar cualquier otra herramienta futura de XONIDU (por ejemplo `xoninstall xoniran`, `xoninstall xonicli`).
+> **Nota:** Esta función te servirá para instalar cualquier otra herramienta futura de XONIDU (por ejemplo `xoninstall xoninas`, `xoninstall xoninas`).
 
 ---
 
