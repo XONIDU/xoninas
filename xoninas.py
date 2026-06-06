@@ -18,6 +18,8 @@ import shutil
 import socket
 import webbrowser
 import threading
+import time
+import sys
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, session, send_file
@@ -47,19 +49,30 @@ CONFIG_CSV = 'config.csv'
 STORAGE_PATH = None
 
 # ============================================================================
+# Colores para terminal
+# ============================================================================
+class Colors:
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BLUE = '\033[94m'
+    PURPLE = '\033[95m'
+    CYAN = '\033[96m'
+    END = '\033[0m'
+    BOLD = '\033[1m'
+
+# ============================================================================
 # Funciones de utilidad
 # ============================================================================
 def get_local_ip():
     """Obtiene la IP local de la máquina en la red"""
     try:
-        # Crear un socket para determinar la IP
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
         return ip
     except:
-        # Fallback: obtener IP de hostname
         try:
             return socket.gethostbyname(socket.gethostname())
         except:
@@ -70,18 +83,15 @@ def get_all_ips():
     ips = []
     try:
         hostname = socket.gethostname()
-        # Obtener todas las IPs del hostname
         for ip in socket.gethostbyname_ex(hostname)[2]:
             if not ip.startswith('127.'):
                 ips.append(ip)
     except:
         pass
     
-    # Añadir localhost
     if '127.0.0.1' not in ips:
         ips.append('127.0.0.1')
     
-    # Añadir la IP principal
     main_ip = get_local_ip()
     if main_ip not in ips and not main_ip.startswith('127.'):
         ips.insert(0, main_ip)
@@ -92,7 +102,6 @@ def generate_qr_code(url):
     """Genera un código QR a partir de una URL"""
     if not QR_AVAILABLE:
         return None
-    
     try:
         qr = qrcode.QRCode(
             version=1,
@@ -103,34 +112,28 @@ def generate_qr_code(url):
         qr.add_data(url)
         qr.make(fit=True)
         return qr
-    except Exception as e:
-        print(f"Error generando QR: {e}")
+    except:
         return None
 
 def print_qr_in_terminal(url):
-    """Intenta mostrar el QR en la terminal (compatible con Linux/Mac)"""
+    """Imprime el QR en la terminal usando caracteres ASCII"""
     if not QR_AVAILABLE:
-        return
+        print(f"{Colors.YELLOW}  (Instala 'qrcode' para ver el QR: pip install qrcode[pil]){Colors.END}")
+        return False
     
     try:
         qr = generate_qr_code(url)
         if qr:
-            # Convertir QR a ASCII
-            qr_blocks = []
+            print(f"{Colors.CYAN}")
             for row in range(qr.modules_count):
                 line = ""
                 for col in range(qr.modules_count):
-                    line += "█" * 2 if qr.modules[row][col] else "  "
-                qr_blocks.append(line)
-            
-            # Mostrar QR en la terminal
-            print(f"{Colors.CYAN}")
-            for line in qr_blocks:
+                    line += "██" if qr.modules[row][col] else "  "
                 print(line)
             print(f"{Colors.END}")
             return True
-    except:
-        pass
+    except Exception as e:
+        print(f"{Colors.YELLOW}  No se pudo generar el QR en esta terminal{Colors.END}")
     return False
 
 def hash_password(pwd):
@@ -140,9 +143,7 @@ def verify_password(pwd, hash_val):
     return hash_password(pwd) == hash_val
 
 def init_storage_path():
-    """Carga la ruta de almacenamiento desde config.csv"""
     global STORAGE_PATH
-    
     if os.path.exists(CONFIG_CSV):
         with open(CONFIG_CSV, 'r') as f:
             reader = csv.reader(f)
@@ -155,13 +156,11 @@ def init_storage_path():
             Path(STORAGE_PATH).mkdir(parents=True, exist_ok=True)
             app.config['STORAGE_FOLDER'] = STORAGE_PATH
             return True
-    
     STORAGE_PATH = str(Path('storage').resolve())
     app.config['STORAGE_FOLDER'] = STORAGE_PATH
     return False
 
 def init_master():
-    """Verifica si existe la clave maestra"""
     return os.path.exists(MASTER_CSV)
 
 def load_folders():
@@ -200,19 +199,6 @@ def folder_allowed(name):
     if h is None:
         return True
     return session.get('folder_access', {}).get(name, False)
-
-# ============================================================================
-# Colores para terminal (en la consola)
-# ============================================================================
-class Colors:
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BLUE = '\033[94m'
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    END = '\033[0m'
-    BOLD = '\033[1m'
 
 # ============================================================================
 # Rutas web
@@ -353,11 +339,12 @@ def session_test():
     return str(dict(session))
 
 # ============================================================================
-# Inicio de la aplicación
+# Inicio con información completa
 # ============================================================================
 def print_startup_info():
     """Muestra información de inicio con IPs y QR"""
-    print(f"\n{Colors.PURPLE}{'='*60}{Colors.END}")
+    print()
+    print(f"{Colors.PURPLE}{'='*60}{Colors.END}")
     print(f"{Colors.BOLD}{Colors.GREEN}🚀 XONINAS NAS INICIADO{Colors.END}")
     print(f"{Colors.PURPLE}{'='*60}{Colors.END}")
     
@@ -367,6 +354,7 @@ def print_startup_info():
     # Mostrar todas las IPs disponibles
     ips = get_all_ips()
     print(f"\n{Colors.BOLD}🌐 Acceso en red local:{Colors.END}")
+    qr_url = None
     for ip in ips:
         if ip.startswith('127.'):
             local_url = f"http://{ip}:5000"
@@ -374,55 +362,56 @@ def print_startup_info():
         else:
             local_url = f"http://{ip}:5000"
             print(f"   • {Colors.GREEN}{local_url}{Colors.END}")
-            # Guardar la primera IP no-local para QR
-            if not hasattr(print_startup_info, 'qr_url'):
-                print_startup_info.qr_url = local_url
+            if qr_url is None:
+                qr_url = local_url
     
-    # Mostrar QR (usar la primera IP válida)
-    if hasattr(print_startup_info, 'qr_url') and QR_AVAILABLE:
+    # Mostrar QR
+    if qr_url:
         print(f"\n{Colors.BOLD}📱 Código QR para escanear:{Colors.END}")
-        print_qr_in_terminal(print_startup_info.qr_url)
+        print_qr_in_terminal(qr_url)
         print(f"{Colors.YELLOW}   Escanea con tu móvil para acceder automáticamente{Colors.END}")
+    elif ips:
+        print(f"\n{Colors.BOLD}📱 Accede desde tu móvil en:{Colors.END}")
+        print(f"   {Colors.GREEN}{ips[0]}:5000{Colors.END}")
     
+    # Información adicional
     print(f"\n{Colors.BOLD}🔐 Clave por defecto:{Colors.END} admin (si no la cambiaste)")
     print(f"{Colors.BOLD}🛑 Para detener:{Colors.END} Ctrl+C")
     print(f"{Colors.PURPLE}{'='*60}{Colors.END}\n")
 
-def open_browser_delayed():
-    """Abre el navegador después de un pequeño retraso"""
-    time.sleep(1.5)
-    url = f"http://{get_local_ip()}:5000"
-    if url.startswith('http://127.'):
-        url = "http://localhost:5000"
+def open_browser():
+    """Abre el navegador con la URL local"""
     try:
+        ip = get_local_ip()
+        if ip.startswith('127.'):
+            url = "http://localhost:5000"
+        else:
+            url = f"http://{ip}:5000"
         webbrowser.open(url)
         print(f"{Colors.GREEN}🌐 Navegador abierto en {url}{Colors.END}")
     except:
-        print(f"{Colors.YELLOW}⚠️ No se pudo abrir el navegador automáticamente. Ve a {url}{Colors.END}")
+        pass
 
+# ============================================================================
+# Ejecución principal
+# ============================================================================
 if __name__ == '__main__':
-    import time
-    
-    # Inicializar ruta de almacenamiento
+    # Inicializar
     init_storage_path()
     
-    # Verificar configuración inicial
     if not init_master():
-        print(f"\n{Colors.RED}❌ Configuración incompleta. Ejecuta start.py primero.{Colors.END}")
-        print(f"{Colors.YELLOW}   El lanzador start.py se encargará de la configuración inicial.{Colors.END}")
-        exit(1)
+        print(f"{Colors.RED}❌ Configuración incompleta. Ejecuta start.py primero.{Colors.END}")
+        sys.exit(1)
     
-    # Mostrar información de inicio
+    # Mostrar información
     print_startup_info()
     
-    # Abrir navegador automáticamente (en un hilo separado)
-    browser_thread = threading.Thread(target=open_browser_delayed, daemon=True)
-    browser_thread.start()
+    # Abrir navegador después de 2 segundos
+    threading.Timer(2.0, open_browser).start()
     
-    # Iniciar servidor con Waitress (en red local 0.0.0.0)
+    # Iniciar servidor
     try:
         from waitress import serve
         serve(app, host='0.0.0.0', port=5000, threads=6)
     except ImportError:
-        print(f"{Colors.YELLOW}⚠️ Waitress no instalado. Usando servidor de desarrollo.{Colors.END}")
         app.run(host='0.0.0.0', port=5000, debug=False)
