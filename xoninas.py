@@ -2,8 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-XONINAS - NAS local con carpetas protegidas
-Versión con selección de ruta de almacenamiento
+XONINAS 2026 v4.2.0 - NAS Local con Carpetas Protegidas
+Sistema NAS con acceso en red local, QR y auto-apertura del navegador
+
+Desarrollado por: Darian Alberto Camacho Salas
+Organización: XONIDU
+#Somos XONIDU
 """
 
 import os
@@ -11,9 +15,19 @@ import csv
 import hashlib
 import secrets
 import shutil
+import socket
+import webbrowser
+import threading
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, session, send_file
+
+# Intentar importar qrcode (opcional, para mostrar QR)
+try:
+    import qrcode
+    QR_AVAILABLE = True
+except ImportError:
+    QR_AVAILABLE = False
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(32)
@@ -27,13 +41,106 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 86400
 # Archivos de configuración
 MASTER_CSV = 'master.csv'
 FOLDERS_CSV = 'folders.csv'
-CONFIG_CSV = 'config.csv'   # Nuevo: guarda la ruta de almacenamiento
+CONFIG_CSV = 'config.csv'
 
-# Variable que contendrá la ruta absoluta de almacenamiento (se define en init_storage_path)
+# Variable global para la ruta de almacenamiento
 STORAGE_PATH = None
 
+# ============================================================================
+# Funciones de utilidad
+# ============================================================================
+def get_local_ip():
+    """Obtiene la IP local de la máquina en la red"""
+    try:
+        # Crear un socket para determinar la IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        # Fallback: obtener IP de hostname
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except:
+            return "127.0.0.1"
+
+def get_all_ips():
+    """Obtiene todas las IPs locales disponibles"""
+    ips = []
+    try:
+        hostname = socket.gethostname()
+        # Obtener todas las IPs del hostname
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if not ip.startswith('127.'):
+                ips.append(ip)
+    except:
+        pass
+    
+    # Añadir localhost
+    if '127.0.0.1' not in ips:
+        ips.append('127.0.0.1')
+    
+    # Añadir la IP principal
+    main_ip = get_local_ip()
+    if main_ip not in ips and not main_ip.startswith('127.'):
+        ips.insert(0, main_ip)
+    
+    return ips
+
+def generate_qr_code(url):
+    """Genera un código QR a partir de una URL"""
+    if not QR_AVAILABLE:
+        return None
+    
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=2,
+            border=1,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+        return qr
+    except Exception as e:
+        print(f"Error generando QR: {e}")
+        return None
+
+def print_qr_in_terminal(url):
+    """Intenta mostrar el QR en la terminal (compatible con Linux/Mac)"""
+    if not QR_AVAILABLE:
+        return
+    
+    try:
+        qr = generate_qr_code(url)
+        if qr:
+            # Convertir QR a ASCII
+            qr_blocks = []
+            for row in range(qr.modules_count):
+                line = ""
+                for col in range(qr.modules_count):
+                    line += "█" * 2 if qr.modules[row][col] else "  "
+                qr_blocks.append(line)
+            
+            # Mostrar QR en la terminal
+            print(f"{Colors.CYAN}")
+            for line in qr_blocks:
+                print(line)
+            print(f"{Colors.END}")
+            return True
+    except:
+        pass
+    return False
+
+def hash_password(pwd):
+    return hashlib.sha256(pwd.encode()).hexdigest()
+
+def verify_password(pwd, hash_val):
+    return hash_password(pwd) == hash_val
+
 def init_storage_path():
-    """Pregunta al usuario la ruta de almacenamiento si no está configurada."""
+    """Carga la ruta de almacenamiento desde config.csv"""
     global STORAGE_PATH
     
     if os.path.exists(CONFIG_CSV):
@@ -44,73 +151,26 @@ def init_storage_path():
                     STORAGE_PATH = row[1]
                     break
         if STORAGE_PATH:
-            # Convertir a Path absoluto
             STORAGE_PATH = str(Path(STORAGE_PATH).expanduser().resolve())
             Path(STORAGE_PATH).mkdir(parents=True, exist_ok=True)
             app.config['STORAGE_FOLDER'] = STORAGE_PATH
             return True
     
-    # No existe configuración → preguntar al usuario
-    print("\n" + "="*60)
-    print("   CONFIGURACIÓN DE RUTA DE ALMACENAMIENTO")
-    print("="*60)
-    print("Actualmente los archivos se guardan en la carpeta 'storage'")
-    print("Puedes elegir otra ubicación (disco externo, red, etc.)\n")
-    
-    default = str(Path('storage').resolve())
-    print(f"Ruta por defecto: {default}")
-    ruta = input(f"\nNueva ruta (deja vacío para usar la de defecto): ").strip()
-    
-    if not ruta:
-        ruta = default
-    else:
-        ruta = str(Path(ruta).expanduser().resolve())
-    
-    # Crear directorio si no existe
-    Path(ruta).mkdir(parents=True, exist_ok=True)
-    
-    # Guardar en config.csv
-    with open(CONFIG_CSV, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(['storage_path', ruta])
-    
-    STORAGE_PATH = ruta
+    STORAGE_PATH = str(Path('storage').resolve())
     app.config['STORAGE_FOLDER'] = STORAGE_PATH
-    print(f"\n✅ Ruta de almacenamiento configurada: {ruta}")
-    print("   Puedes cambiar esta ruta eliminando el archivo config.csv y reiniciando.\n")
-    return True
-
-def hash_password(pwd):
-    return hashlib.sha256(pwd.encode()).hexdigest()
-
-def verify_password(pwd, hash_val):
-    return hash_password(pwd) == hash_val
+    return False
 
 def init_master():
-    """Configura la clave maestra si no existe."""
-    if not os.path.exists(MASTER_CSV):
-        print("\n" + "="*50)
-        print("    CONFIGURACIÓN INICIAL - CLAVE MAESTRA")
-        print("="*50)
-        pwd = input("Clave maestra: ").strip()
-        if not pwd:
-            pwd = "admin"
-            print("Usando 'admin'")
-        with open(MASTER_CSV, 'w') as f:
-            f.write(hash_password(pwd))
-        print("✅ Clave guardada. Reinicia la aplicación.\n")
-        return False
-    return True
+    """Verifica si existe la clave maestra"""
+    return os.path.exists(MASTER_CSV)
 
 def load_folders():
-    """Carga la lista de carpetas desde folders.csv."""
     if not os.path.exists(FOLDERS_CSV):
         return []
     with open(FOLDERS_CSV, 'r') as f:
         return list(csv.DictReader(f))
 
 def save_folder(name, pwd_hash):
-    """Guarda una nueva carpeta en el CSV."""
     exists = os.path.exists(FOLDERS_CSV)
     with open(FOLDERS_CSV, 'a', newline='') as f:
         w = csv.DictWriter(f, fieldnames=['name', 'password_hash', 'created'])
@@ -123,7 +183,6 @@ def save_folder(name, pwd_hash):
         })
 
 def delete_folder_csv(name):
-    """Elimina una carpeta del CSV (no el directorio físico)."""
     folders = [f for f in load_folders() if f['name'] != name]
     with open(FOLDERS_CSV, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=['name', 'password_hash', 'created'])
@@ -142,9 +201,22 @@ def folder_allowed(name):
         return True
     return session.get('folder_access', {}).get(name, False)
 
-# ----------------------------------------------------------------------
+# ============================================================================
+# Colores para terminal (en la consola)
+# ============================================================================
+class Colors:
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BLUE = '\033[94m'
+    PURPLE = '\033[95m'
+    CYAN = '\033[96m'
+    END = '\033[0m'
+    BOLD = '\033[1m'
+
+# ============================================================================
 # Rutas web
-# ----------------------------------------------------------------------
+# ============================================================================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -184,7 +256,6 @@ def create_folder():
         return redirect(url_for('index'))
     if safe in [f['name'] for f in load_folders()]:
         return redirect(url_for('index'))
-    # Crear directorio dentro de la ruta de almacenamiento
     folder_path = Path(app.config['STORAGE_FOLDER']) / safe
     folder_path.mkdir(parents=True, exist_ok=False)
     save_folder(safe, hash_password(pwd) if pwd else '')
@@ -281,23 +352,77 @@ def health():
 def session_test():
     return str(dict(session))
 
-# ----------------------------------------------------------------------
-# Inicio
-# ----------------------------------------------------------------------
+# ============================================================================
+# Inicio de la aplicación
+# ============================================================================
+def print_startup_info():
+    """Muestra información de inicio con IPs y QR"""
+    print(f"\n{Colors.PURPLE}{'='*60}{Colors.END}")
+    print(f"{Colors.BOLD}{Colors.GREEN}🚀 XONINAS NAS INICIADO{Colors.END}")
+    print(f"{Colors.PURPLE}{'='*60}{Colors.END}")
+    
+    # Mostrar ruta de almacenamiento
+    print(f"\n{Colors.CYAN}📁 Almacenamiento:{Colors.END} {app.config['STORAGE_FOLDER']}")
+    
+    # Mostrar todas las IPs disponibles
+    ips = get_all_ips()
+    print(f"\n{Colors.BOLD}🌐 Acceso en red local:{Colors.END}")
+    for ip in ips:
+        if ip.startswith('127.'):
+            local_url = f"http://{ip}:5000"
+            print(f"   • {Colors.GREEN}{local_url}{Colors.END} (este equipo)")
+        else:
+            local_url = f"http://{ip}:5000"
+            print(f"   • {Colors.GREEN}{local_url}{Colors.END}")
+            # Guardar la primera IP no-local para QR
+            if not hasattr(print_startup_info, 'qr_url'):
+                print_startup_info.qr_url = local_url
+    
+    # Mostrar QR (usar la primera IP válida)
+    if hasattr(print_startup_info, 'qr_url') and QR_AVAILABLE:
+        print(f"\n{Colors.BOLD}📱 Código QR para escanear:{Colors.END}")
+        print_qr_in_terminal(print_startup_info.qr_url)
+        print(f"{Colors.YELLOW}   Escanea con tu móvil para acceder automáticamente{Colors.END}")
+    
+    print(f"\n{Colors.BOLD}🔐 Clave por defecto:{Colors.END} admin (si no la cambiaste)")
+    print(f"{Colors.BOLD}🛑 Para detener:{Colors.END} Ctrl+C")
+    print(f"{Colors.PURPLE}{'='*60}{Colors.END}\n")
+
+def open_browser_delayed():
+    """Abre el navegador después de un pequeño retraso"""
+    time.sleep(1.5)
+    url = f"http://{get_local_ip()}:5000"
+    if url.startswith('http://127.'):
+        url = "http://localhost:5000"
+    try:
+        webbrowser.open(url)
+        print(f"{Colors.GREEN}🌐 Navegador abierto en {url}{Colors.END}")
+    except:
+        print(f"{Colors.YELLOW}⚠️ No se pudo abrir el navegador automáticamente. Ve a {url}{Colors.END}")
+
 if __name__ == '__main__':
-    # 1. Configurar ruta de almacenamiento (pregunta si no existe)
+    import time
+    
+    # Inicializar ruta de almacenamiento
     init_storage_path()
     
-    # 2. Configurar clave maestra (pregunta si no existe)
+    # Verificar configuración inicial
     if not init_master():
-        exit(0)
+        print(f"\n{Colors.RED}❌ Configuración incompleta. Ejecuta start.py primero.{Colors.END}")
+        print(f"{Colors.YELLOW}   El lanzador start.py se encargará de la configuración inicial.{Colors.END}")
+        exit(1)
     
-    # 3. Iniciar servidor
+    # Mostrar información de inicio
+    print_startup_info()
+    
+    # Abrir navegador automáticamente (en un hilo separado)
+    browser_thread = threading.Thread(target=open_browser_delayed, daemon=True)
+    browser_thread.start()
+    
+    # Iniciar servidor con Waitress (en red local 0.0.0.0)
     try:
         from waitress import serve
-        print(f"\n🚀 XONINAS NAS iniciado en http://0.0.0.0:5000")
-        print(f"   Almacenamiento: {app.config['STORAGE_FOLDER']}")
-        print("   Acceso desde la red local: http://<tu-ip>:5000")
-        serve(app, host='0.0.0.0', port=5000, threads=4)
+        serve(app, host='0.0.0.0', port=5000, threads=6)
     except ImportError:
-        app.run(host='0.0.0.0', port=5000, debug=True)
+        print(f"{Colors.YELLOW}⚠️ Waitress no instalado. Usando servidor de desarrollo.{Colors.END}")
+        app.run(host='0.0.0.0', port=5000, debug=False)
