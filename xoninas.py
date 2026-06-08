@@ -4,6 +4,7 @@
 """
 XONINAS 2026 v4.2.0 - NAS Local con Carpetas Protegidas
 Sistema NAS con acceso en red local, QR y auto-apertura del navegador
+Soporte para subida múltiple de archivos y carpetas
 
 Desarrollado por: Darian Alberto Camacho Salas
 Organización: XONIDU
@@ -20,9 +21,11 @@ import webbrowser
 import threading
 import time
 import sys
+import zipfile
+import tempfile
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, session, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, send_file, jsonify
 
 # Intentar importar qrcode (opcional, para mostrar QR)
 try:
@@ -200,6 +203,36 @@ def folder_allowed(name):
         return True
     return session.get('folder_access', {}).get(name, False)
 
+def format_size(size):
+    """Formatea el tamaño de archivo de forma legible"""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
+
+def get_folder_size(folder_path):
+    """Calcula el tamaño total de una carpeta"""
+    total = 0
+    for item in Path(folder_path).rglob('*'):
+        if item.is_file():
+            total += item.stat().st_size
+    return total
+
+def zip_folder(folder_path, output_path):
+    """Comprime una carpeta en un archivo ZIP"""
+    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, folder_path)
+                zipf.write(file_path, arcname)
+
+def extract_zip(zip_path, extract_to):
+    """Extrae un archivo ZIP a una carpeta"""
+    with zipfile.ZipFile(zip_path, 'r') as zipf:
+        zipf.extractall(extract_to)
+
 # ============================================================================
 # Rutas web
 # ============================================================================
@@ -283,17 +316,35 @@ def folder_contents(folder_name):
     folder_path = Path(app.config['STORAGE_FOLDER']) / folder_name
     if not folder_path.exists():
         return "Carpeta no encontrada", 404
+    
     files = []
+    folders = []
     for item in folder_path.iterdir():
         if item.is_file():
             s = item.stat()
             files.append({
                 'name': item.name,
                 'size': s.st_size,
+                'size_formatted': format_size(s.st_size),
                 'modified': datetime.fromtimestamp(s.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
             })
-    files.sort(key=lambda x: x['name'])
-    return render_template('folder_contents.html', folder_name=folder_name, files=files)
+        elif item.is_dir():
+            folder_size = get_folder_size(item)
+            folders.append({
+                'name': item.name,
+                'size': folder_size,
+                'size_formatted': format_size(folder_size),
+                'modified': datetime.fromtimestamp(item.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                'is_subfolder': True
+            })
+    
+    files.sort(key=lambda x: x['name'].lower())
+    folders.sort(key=lambda x: x['name'].lower())
+    
+    return render_template('folder_contents.html', 
+                          folder_name=folder_name, 
+                          files=files, 
+                          folders=folders)
 
 @app.route('/upload/<folder_name>', methods=['POST'])
 def upload_file(folder_name):
@@ -301,11 +352,92 @@ def upload_file(folder_name):
         return redirect(url_for('login'))
     if not folder_allowed(folder_name):
         return redirect(url_for('folder_auth', folder_name=folder_name))
-    f = request.files.get('file')
-    if f and f.filename:
-        filename = f.filename.replace(' ', '_')
-        path = Path(app.config['STORAGE_FOLDER']) / folder_name / filename
-        f.save(path)
+    
+    folder_path = Path(app.config['STORAGE_FOLDER']) / folder_name
+    
+    # Subida múltiple de archivos
+    if 'files' in request.files:
+        uploaded_files = request.files.getlist('files')
+        for file in uploaded_files:
+            if file and file.filename:
+                filename = secure_filename(file.filename.replace(' ', '_'))
+                file.save(folder_path / filename)
+    
+    # Subida de carpetas (como ZIP)
+    if 'folder_zip' in request.files:
+        zip_file = request.files['folder_zip']
+        if zip_file and zip_file.filename:
+            # Guardar ZIP temporalmente
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp:
+                zip_file.save(tmp.name)
+                tmp_path = tmp.name
+            
+            # Extraer ZIP en la carpeta destino
+            try:
+                extract_zip(tmp_path, folder_path)
+                os.unlink(tmp_path)
+            except Exception as e:
+                print(f"Error extrayendo ZIP: {e}")
+    
+    return redirect(url_for('folder_contents', folder_name=folder_name))
+
+@app.route('/upload_subfolder/<folder_name>', methods=['POST'])
+def upload_subfolder(folder_name):
+    """Sube archivos a una subcarpeta específica"""
+    if not session.get('master_authenticated'):
+        return redirect(url_for('login'))
+    if not folder_allowed(folder_name):
+        return redirect(url_for('folder_auth', folder_name=folder_name))
+    
+    subfolder = request.form.get('subfolder', '')
+    if not subfolder:
+        return redirect(url_for('folder_contents', folder_name=folder_name))
+    
+    folder_path = Path(app.config['STORAGE_FOLDER']) / folder_name / subfolder
+    folder_path.mkdir(parents=True, exist_ok=True)
+    
+    if 'files' in request.files:
+        uploaded_files = request.files.getlist('files')
+        for file in uploaded_files:
+            if file and file.filename:
+                filename = secure_filename(file.filename.replace(' ', '_'))
+                file.save(folder_path / filename)
+    
+    return redirect(url_for('folder_contents', folder_name=folder_name))
+
+@app.route('/create_subfolder/<folder_name>', methods=['POST'])
+def create_subfolder(folder_name):
+    """Crea una subcarpeta dentro de una carpeta"""
+    if not session.get('master_authenticated'):
+        return redirect(url_for('login'))
+    if not folder_allowed(folder_name):
+        return redirect(url_for('folder_auth', folder_name=folder_name))
+    
+    subfolder_name = request.form.get('subfolder_name', '').strip()
+    if not subfolder_name:
+        return redirect(url_for('folder_contents', folder_name=folder_name))
+    
+    safe_name = subfolder_name.replace(' ', '_')
+    if any(c in safe_name for c in '/\\?%*:|"<>'):
+        return redirect(url_for('folder_contents', folder_name=folder_name))
+    
+    folder_path = Path(app.config['STORAGE_FOLDER']) / folder_name / safe_name
+    folder_path.mkdir(parents=True, exist_ok=True)
+    
+    return redirect(url_for('folder_contents', folder_name=folder_name))
+
+@app.route('/delete_subfolder/<folder_name>/<subfolder_name>')
+def delete_subfolder(folder_name, subfolder_name):
+    """Elimina una subcarpeta y todo su contenido"""
+    if not session.get('master_authenticated'):
+        return redirect(url_for('login'))
+    if not folder_allowed(folder_name):
+        return redirect(url_for('folder_auth', folder_name=folder_name))
+    
+    folder_path = Path(app.config['STORAGE_FOLDER']) / folder_name / subfolder_name
+    if folder_path.exists() and folder_path.is_dir():
+        shutil.rmtree(folder_path)
+    
     return redirect(url_for('folder_contents', folder_name=folder_name))
 
 @app.route('/download/<folder_name>/<filename>')
@@ -319,6 +451,56 @@ def download_file(folder_name, filename):
         return "Archivo no encontrado", 404
     return send_file(path, as_attachment=True, download_name=filename)
 
+@app.route('/download_subfolder/<folder_name>/<subfolder_name>/<filename>')
+def download_subfolder_file(folder_name, subfolder_name, filename):
+    if not session.get('master_authenticated'):
+        return redirect(url_for('login'))
+    if not folder_allowed(folder_name):
+        return redirect(url_for('folder_auth', folder_name=folder_name))
+    path = Path(app.config['STORAGE_FOLDER']) / folder_name / subfolder_name / filename
+    if not path.exists():
+        return "Archivo no encontrado", 404
+    return send_file(path, as_attachment=True, download_name=filename)
+
+@app.route('/download_folder/<folder_name>')
+def download_folder_as_zip(folder_name):
+    """Descarga una carpeta completa como ZIP"""
+    if not session.get('master_authenticated'):
+        return redirect(url_for('login'))
+    if not folder_allowed(folder_name):
+        return redirect(url_for('folder_auth', folder_name=folder_name))
+    
+    folder_path = Path(app.config['STORAGE_FOLDER']) / folder_name
+    if not folder_path.exists():
+        return "Carpeta no encontrada", 404
+    
+    # Crear ZIP temporal
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp:
+        zip_path = tmp.name
+    
+    zip_folder(folder_path, zip_path)
+    
+    return send_file(zip_path, as_attachment=True, download_name=f"{folder_name}.zip")
+
+@app.route('/download_subfolder/<folder_name>/<subfolder_name>')
+def download_subfolder_as_zip(folder_name, subfolder_name):
+    """Descarga una subcarpeta como ZIP"""
+    if not session.get('master_authenticated'):
+        return redirect(url_for('login'))
+    if not folder_allowed(folder_name):
+        return redirect(url_for('folder_auth', folder_name=folder_name))
+    
+    folder_path = Path(app.config['STORAGE_FOLDER']) / folder_name / subfolder_name
+    if not folder_path.exists():
+        return "Carpeta no encontrada", 404
+    
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp:
+        zip_path = tmp.name
+    
+    zip_folder(folder_path, zip_path)
+    
+    return send_file(zip_path, as_attachment=True, download_name=f"{subfolder_name}.zip")
+
 @app.route('/delete_file/<folder_name>/<filename>')
 def delete_file(folder_name, filename):
     if not session.get('master_authenticated'):
@@ -326,6 +508,17 @@ def delete_file(folder_name, filename):
     if not folder_allowed(folder_name):
         return redirect(url_for('folder_auth', folder_name=folder_name))
     path = Path(app.config['STORAGE_FOLDER']) / folder_name / filename
+    if path.exists():
+        path.unlink()
+    return redirect(url_for('folder_contents', folder_name=folder_name))
+
+@app.route('/delete_subfolder_file/<folder_name>/<subfolder_name>/<filename>')
+def delete_subfolder_file(folder_name, subfolder_name, filename):
+    if not session.get('master_authenticated'):
+        return redirect(url_for('login'))
+    if not folder_allowed(folder_name):
+        return redirect(url_for('folder_auth', folder_name=folder_name))
+    path = Path(app.config['STORAGE_FOLDER']) / folder_name / subfolder_name / filename
     if path.exists():
         path.unlink()
     return redirect(url_for('folder_contents', folder_name=folder_name))
@@ -338,6 +531,10 @@ def health():
 def session_test():
     return str(dict(session))
 
+def secure_filename(filename):
+    """Sanitiza nombres de archivo"""
+    return filename.replace('/', '_').replace('\\', '_')
+
 # ============================================================================
 # Inicio con información completa
 # ============================================================================
@@ -348,10 +545,8 @@ def print_startup_info():
     print(f"{Colors.BOLD}{Colors.GREEN}🚀 XONINAS NAS INICIADO{Colors.END}")
     print(f"{Colors.PURPLE}{'='*60}{Colors.END}")
     
-    # Mostrar ruta de almacenamiento
     print(f"\n{Colors.CYAN}📁 Almacenamiento:{Colors.END} {app.config['STORAGE_FOLDER']}")
     
-    # Mostrar todas las IPs disponibles
     ips = get_all_ips()
     print(f"\n{Colors.BOLD}🌐 Acceso en red local:{Colors.END}")
     qr_url = None
@@ -365,17 +560,14 @@ def print_startup_info():
             if qr_url is None:
                 qr_url = local_url
     
-    # Mostrar QR
     if qr_url:
         print(f"\n{Colors.BOLD}📱 Código QR para escanear:{Colors.END}")
         print_qr_in_terminal(qr_url)
         print(f"{Colors.YELLOW}   Escanea con tu móvil para acceder automáticamente{Colors.END}")
-    elif ips:
-        print(f"\n{Colors.BOLD}📱 Accede desde tu móvil en:{Colors.END}")
-        print(f"   {Colors.GREEN}{ips[0]}:5000{Colors.END}")
     
-    # Información adicional
-    print(f"\n{Colors.BOLD}🔐 Clave por defecto:{Colors.END} admin (si no la cambiaste)")
+    print(f"\n{Colors.BOLD}📤 Subida múltiple:{Colors.END} Puedes seleccionar varios archivos a la vez")
+    print(f"{Colors.BOLD}📁 Subida de carpetas:{Colors.END} Arrastra carpetas completas (se suben como ZIP)")
+    print(f"{Colors.BOLD}🔐 Clave por defecto:{Colors.END} admin (si no la cambiaste)")
     print(f"{Colors.BOLD}🛑 Para detener:{Colors.END} Ctrl+C")
     print(f"{Colors.PURPLE}{'='*60}{Colors.END}\n")
 
@@ -396,20 +588,16 @@ def open_browser():
 # Ejecución principal
 # ============================================================================
 if __name__ == '__main__':
-    # Inicializar
     init_storage_path()
     
     if not init_master():
         print(f"{Colors.RED}❌ Configuración incompleta. Ejecuta start.py primero.{Colors.END}")
         sys.exit(1)
     
-    # Mostrar información
     print_startup_info()
     
-    # Abrir navegador después de 2 segundos
     threading.Timer(2.0, open_browser).start()
     
-    # Iniciar servidor
     try:
         from waitress import serve
         serve(app, host='0.0.0.0', port=5000, threads=6)
