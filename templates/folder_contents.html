@@ -2,225 +2,342 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XONINAS · Contenido de {{ folder_name }}</title>
+    <title>{{ folder_name }} · XONINAS</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: #030503;
-            font-family: 'Inter', 'Segoe UI', system-ui;
-            padding: 1.8rem;
-            color: #cfefcf;
+            background: #000;
+            font-family: 'Segoe UI', system-ui;
+            color: #0f0;
+            padding: 2rem;
         }
-
         .container {
-            max-width: 1300px;
+            max-width: 1400px;
             margin: 0 auto;
         }
-
-        .nav-header {
+        header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 2rem;
+            border-bottom: 2px solid #6f2da8;
             padding-bottom: 1rem;
-            border-bottom: 1px solid #2a2f2a;
-        }
-
-        .title-area h1 {
-            font-size: 1.8rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: linear-gradient(130deg, #c084fc, #88ffaa);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
-
-        .btn-back {
-            background: #111511;
-            padding: 0.5rem 1.2rem;
-            border-radius: 3rem;
-            text-decoration: none;
-            color: #b0ffb0;
-            border: 1px solid #2a6a2a;
-            transition: 0.2s;
-        }
-
-        .btn-back:hover {
-            background: #1e2a1e;
-            border-color: #6f2da8;
-        }
-
-        /* Upload zone */
-        .upload-zone {
-            background: #0c100c;
-            border-radius: 1.8rem;
-            padding: 1.2rem 1.8rem;
-            margin-bottom: 2.5rem;
-            border: 1px dashed #6f2da8;
-            transition: 0.2s;
-        }
-
-        .upload-form {
-            display: flex;
+            margin-bottom: 1.5rem;
             flex-wrap: wrap;
             gap: 1rem;
-            align-items: center;
         }
-
-        .file-input {
-            flex: 2;
-            background: #0a0e0a;
-            border: 1px solid #2a2f2a;
-            border-radius: 3rem;
-            padding: 0.6rem 1rem;
-            color: #e0ffe0;
+        h1 { color: #6f2da8; }
+        .back {
+            background: #6f2da8;
+            padding: 0.5rem 1rem;
+            border-radius: 40px;
+            text-decoration: none;
+            color: white;
         }
-
-        .btn-upload {
-            background: #00aa55;
-            border: none;
-            padding: 0.6rem 1.6rem;
-            border-radius: 3rem;
-            font-weight: bold;
-            color: black;
+        .upload-panel {
+            background: #111;
+            border: 1px solid #6f2da8;
+            border-radius: 28px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .upload-area {
+            border: 2px dashed #6f2da8;
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
             cursor: pointer;
             transition: 0.2s;
+            margin-bottom: 1rem;
         }
-
-        .btn-upload:hover {
-            background: #00dd77;
-            transform: scale(1.02);
+        .upload-area:hover, .upload-area.drag-over {
+            border-color: #00ff88;
+            background: rgba(0,255,136,0.05);
         }
-
-        /* Tabla de archivos moderna */
-        .files-table {
+        .upload-area input {
+            display: none;
+        }
+        .btn-primary {
+            background: #00aa55;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-right: 0.5rem;
+        }
+        .btn-secondary {
+            background: #6f2da8;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 40px;
+            color: white;
+            cursor: pointer;
+        }
+        .subfolder-form {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 20px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .subfolder-form input {
+            background: #222;
+            border: 1px solid #6f2da8;
+            border-radius: 40px;
+            padding: 0.5rem 1rem;
+            color: #0f0;
+            flex: 1;
+        }
+        table {
             width: 100%;
             border-collapse: collapse;
-            background: rgba(10, 14, 10, 0.6);
-            border-radius: 1.5rem;
-            overflow: hidden;
         }
-
-        .files-table th {
+        th, td {
             text-align: left;
-            padding: 1rem 1rem;
-            background: #0f130f;
-            color: #c084fc;
-            font-weight: 600;
-            font-size: 0.85rem;
-            letter-spacing: 0.5px;
+            padding: 12px;
+            border-bottom: 1px solid #222;
         }
-
-        .files-table td {
-            padding: 1rem 1rem;
-            border-bottom: 1px solid #1a1e1a;
-            vertical-align: middle;
+        th { color: #6f2da8; }
+        .folder-row {
+            background: rgba(111,45,168,0.1);
         }
-
-        .files-table tr:hover {
-            background: #111511;
+        .folder-row:hover {
+            background: rgba(111,45,168,0.2);
         }
-
         .file-actions a {
-            margin-right: 1rem;
+            margin-right: 12px;
             text-decoration: none;
-            font-size: 0.85rem;
-            padding: 0.3rem 0.8rem;
-            border-radius: 2rem;
-            transition: 0.15s;
-            display: inline-block;
+            color: #0f0;
         }
-
-        .btn-download {
-            background: #1e2a2e;
-            color: #88ddff;
-            border: 1px solid #2a6a8a;
+        .delete { color: #f77 !important; }
+        .empty { text-align: center; padding: 2rem; color: #666; }
+        .selected-count {
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            color: #aaa;
         }
-
-        .btn-download:hover {
-            background: #2a3a3e;
-        }
-
-        .btn-delete-file {
-            background: #2a1a1a;
-            color: #ffaaaa;
-            border: 1px solid #8a2a2a;
-        }
-
-        .btn-delete-file:hover {
-            background: #3a2222;
-        }
-
-        .empty-folder {
-            text-align: center;
-            padding: 3rem;
-            background: #0a0e0a;
-            border-radius: 1.8rem;
-            color: #6a6f6a;
-        }
-
-        @media (max-width: 700px) {
-            .files-table thead { display: none; }
-            .files-table tr { display: block; margin-bottom: 1rem; border: 1px solid #2a2f2a; border-radius: 1rem; padding: 0.8rem; }
-            .files-table td { display: flex; justify-content: space-between; align-items: center; border: none; padding: 0.5rem; }
-            .files-table td::before { content: attr(data-label); font-weight: bold; color: #c084fc; width: 40%; }
-            .file-actions { justify-content: flex-end; }
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            th, td { padding: 6px; font-size: 0.8rem; }
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="nav-header">
-        <div class="title-area">
-            <h1>📂 {{ folder_name }}</h1>
+    <header>
+        <h1>📂 {{ folder_name }}</h1>
+        <div>
+            <a href="/download_folder/{{ folder_name }}" class="back" style="background:#00aa55; margin-right:0.5rem;">📦 Descargar todo (ZIP)</a>
+            <a href="/" class="back">← Todas las carpetas</a>
         </div>
-        <a href="/" class="btn-back">← Todas las carpetas</a>
+    </header>
+
+    <div class="upload-panel">
+        <div class="upload-area" id="dropZone">
+            <div id="uploadText">📁 Arrastra archivos o carpetas aquí</div>
+            <div style="font-size:0.8rem; color:#666; margin-top:0.5rem;">O haz clic para seleccionar</div>
+            <input type="file" id="fileInput" multiple webkitdirectory directory>
+        </div>
+        <div id="selectedFiles" class="selected-count"></div>
+        <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
+            <button id="uploadBtn" class="btn-primary">⬆ Subir seleccionados</button>
+            <button id="uploadZipBtn" class="btn-secondary">📦 Subir carpeta (ZIP)</button>
+        </div>
     </div>
 
-    <div class="upload-zone">
-        <form method="POST" action="/upload/{{ folder_name }}" enctype="multipart/form-data" class="upload-form">
-            <input type="file" name="file" class="file-input" required>
-            <button type="submit" class="btn-upload">⬆️ SUBIR ARCHIVO</button>
-        </form>
+    <div class="subfolder-form">
+        <input type="text" id="subfolderName" placeholder="Nueva subcarpeta">
+        <button id="createSubfolderBtn" class="btn-secondary">➕ Crear subcarpeta</button>
     </div>
 
-    <table class="files-table">
+    <table>
         <thead>
-            <tr><th>Nombre</th><th>Tamaño</th><th>Modificado</th><th>Acciones</th></tr>
+            <tr>
+                <th>Tipo</th>
+                <th>Nombre</th>
+                <th>Tamaño</th>
+                <th>Modificado</th>
+                <th>Acciones</th>
+            </tr>
         </thead>
         <tbody>
-            {% for archivo in files %}
-            <tr>
-                <td data-label="Nombre">📄 {{ archivo.name }}</td>
-                <td data-label="Tamaño">
-                    {% if archivo.size < 1024 %}
-                        {{ archivo.size }} B
-                    {% elif archivo.size < 1048576 %}
-                        {{ (archivo.size / 1024) | round(1) }} KB
-                    {% else %}
-                        {{ (archivo.size / 1048576) | round(1) }} MB
-                    {% endif %}
+            {% for folder in folders %}
+            <tr class="folder-row">
+                <td>📁</td>
+                <td><a href="/folder/{{ folder_name }}/{{ folder.name }}" style="color:#0f0; text-decoration:none;">{{ folder.name }}/</a></td>
+                <td>{{ folder.size_formatted }}</td>
+                <td>{{ folder.modified }}</td>
+                <td class="file-actions">
+                    <a href="/download_subfolder/{{ folder_name }}/{{ folder.name }}">📦 ZIP</a>
+                    <a href="/delete_subfolder/{{ folder_name }}/{{ folder.name }}" class="delete" onclick="return confirm('¿Eliminar carpeta y todo su contenido?')">🗑 Eliminar</a>
                 </td>
-                <td data-label="Modificado">{{ archivo.modified }}</td>
-                <td data-label="Acciones" class="file-actions">
-                    <a href="/download/{{ folder_name }}/{{ archivo.name }}" class="btn-download">⬇ Descargar</a>
-                    <a href="/delete_file/{{ folder_name }}/{{ archivo.name }}" class="btn-delete-file" onclick="return confirm('¿Eliminar este archivo permanentemente?')">🗑 Eliminar</a>
+            </tr>
+            {% endfor %}
+            {% for file in files %}
+            <tr>
+                <td>📄</td>
+                <td>{{ file.name }}</td>
+                <td>{{ file.size_formatted }}</td>
+                <td>{{ file.modified }}</td>
+                <td class="file-actions">
+                    <a href="/download/{{ folder_name }}/{{ file.name }}">⬇ Descargar</a>
+                    <a href="/delete_file/{{ folder_name }}/{{ file.name }}" class="delete" onclick="return confirm('¿Borrar archivo?')">🗑 Eliminar</a>
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="4" class="empty-folder">📭 Esta carpeta está vacía. Sube archivos para comenzar.</td></tr>
+            <tr>
+                <td colspan="5" class="empty">📭 Carpeta vacía. Sube archivos o carpetas.</td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadZipBtn = document.getElementById('uploadZipBtn');
+    const subfolderNameInput = document.getElementById('subfolderName');
+    const createSubfolderBtn = document.getElementById('createSubfolderBtn');
+    const selectedFilesDiv = document.getElementById('selectedFiles');
+    
+    let selectedFiles = [];
+    let selectedFolders = [];
+
+    // Drag & drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+    });
+    
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drag-over');
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const items = e.dataTransfer.items;
+        processItems(items);
+    });
+    
+    dropZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    fileInput.addEventListener('change', (e) => {
+        processFileList(e.target.files);
+    });
+    
+    function processItems(items) {
+        const files = [];
+        const processEntry = async (entry, path = '') => {
+            if (entry.isFile) {
+                const file = await new Promise((resolve) => entry.file(resolve));
+                file.relativePath = path + file.name;
+                files.push(file);
+            } else if (entry.isDirectory) {
+                const reader = entry.createReader();
+                const entries = await new Promise((resolve) => reader.readEntries(resolve));
+                for (const subEntry of entries) {
+                    await processEntry(subEntry, path + entry.name + '/');
+                }
+            }
+        };
+        
+        const promises = [];
+        for (let i = 0; i < items.length; i++) {
+            const entry = items[i].webkitGetAsEntry();
+            if (entry) {
+                promises.push(processEntry(entry));
+            }
+        }
+        
+        Promise.all(promises).then(() => {
+            selectedFiles = files;
+            selectedFilesDiv.innerHTML = `📎 ${selectedFiles.length} archivo(s) seleccionado(s)`;
+        });
+    }
+    
+    function processFileList(fileList) {
+        selectedFiles = Array.from(fileList);
+        selectedFilesDiv.innerHTML = `📎 ${selectedFiles.length} archivo(s) seleccionado(s)`;
+    }
+    
+    uploadBtn.addEventListener('click', () => {
+        if (selectedFiles.length === 0) {
+            alert('No hay archivos seleccionados');
+            return;
+        }
+        
+        const formData = new FormData();
+        for (const file of selectedFiles) {
+            const relativePath = file.relativePath || file.webkitRelativePath || '';
+            if (relativePath) {
+                const parts = relativePath.split('/');
+                if (parts.length > 1) {
+                    const folder = parts[0];
+                    formData.append('files', file);
+                } else {
+                    formData.append('files', file);
+                }
+            } else {
+                formData.append('files', file);
+            }
+        }
+        
+        fetch('/upload/{{ folder_name }}', {
+            method: 'POST',
+            body: formData
+        }).then(() => {
+            window.location.reload();
+        });
+    });
+    
+    uploadZipBtn.addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.webkitdirectory = true;
+        input.directory = true;
+        input.onchange = (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+            
+            const formData = new FormData();
+            formData.append('folder_zip', files[0]);
+            
+            fetch('/upload/{{ folder_name }}', {
+                method: 'POST',
+                body: formData
+            }).then(() => {
+                window.location.reload();
+            });
+        };
+        input.click();
+    });
+    
+    createSubfolderBtn.addEventListener('click', () => {
+        const name = subfolderNameInput.value.trim();
+        if (!name) {
+            alert('Escribe un nombre para la subcarpeta');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('subfolder_name', name);
+        
+        fetch('/create_subfolder/{{ folder_name }}', {
+            method: 'POST',
+            body: formData
+        }).then(() => {
+            window.location.reload();
+        });
+    });
+</script>
 </body>
 </html>
