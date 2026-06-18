@@ -2,9 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-XONINAS 2026 - NAS Local con Carpetas Protegidas
-Lanzador Universal con múltiples estrategias de instalación
+XONINAS 2026 - Lanzador Ultrarrobusto
+NAS Local con Carpetas Protegidas
+Incluye gestión automática de STORAGE_FOLDER, pip, dependencias y Cloudflare Tunnel
+
 Desarrollado por: Darian Alberto Camacho Salas
+Organización: XONIDU
 #Somos XONIDU
 """
 
@@ -17,6 +20,7 @@ import importlib.util
 import time
 import signal
 import webbrowser
+import csv
 from pathlib import Path
 
 # ============================================================================
@@ -142,6 +146,61 @@ def print_banner():
     print(banner)
 
 # ============================================================================
+# Gestión de STORAGE_FOLDER (Robusto)
+# ============================================================================
+def ensure_storage_folder():
+    """
+    Asegura que STORAGE_FOLDER esté definido y configurado correctamente.
+    Si falta config.csv, lo crea con la ruta por defecto.
+    """
+    script_dir = get_script_dir()
+    config_path = os.path.join(script_dir, 'config.csv')
+    storage_path = None
+    
+    # 1. Intentar leer config.csv
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if row and row[0] == 'storage_path':
+                        storage_path = row[1].strip()
+                        break
+        except Exception as e:
+            print(f"{Colors.YELLOW}⚠️ Error leyendo config.csv: {e}{Colors.END}")
+    
+    # 2. Si no se encontró, usar ruta por defecto y crear config.csv
+    if not storage_path:
+        default_path = os.path.join(script_dir, 'storage')
+        storage_path = str(Path(default_path).resolve())
+        print(f"{Colors.YELLOW}⚠️ config.csv no encontrado o sin storage_path. Usando ruta por defecto: {storage_path}{Colors.END}")
+        # Crear config.csv
+        try:
+            with open(config_path, 'w') as f:
+                f.write(f"storage_path,{storage_path}\n")
+            print(f"{Colors.GREEN}✅ config.csv creado con ruta: {storage_path}{Colors.END}")
+        except Exception as e:
+            print(f"{Colors.RED}❌ No se pudo crear config.csv: {e}{Colors.END}")
+            # Usar la ruta por defecto aunque no se pueda escribir
+            storage_path = default_path
+    
+    # 3. Crear el directorio si no existe
+    try:
+        Path(storage_path).mkdir(parents=True, exist_ok=True)
+        print(f"{Colors.GREEN}📁 Directorio de almacenamiento listo: {storage_path}{Colors.END}")
+    except Exception as e:
+        print(f"{Colors.RED}❌ No se pudo crear el directorio de almacenamiento: {e}{Colors.END}")
+        # Fallback a ./storage en el directorio actual
+        storage_path = os.path.join(os.getcwd(), 'storage')
+        Path(storage_path).mkdir(parents=True, exist_ok=True)
+        print(f"{Colors.YELLOW}⚠️ Usando fallback: {storage_path}{Colors.END}")
+    
+    # 4. Establecer variable de entorno para que xoninas.py la use
+    os.environ['STORAGE_FOLDER'] = storage_path
+    print(f"{Colors.CYAN}🔧 STORAGE_FOLDER establecido como variable de entorno{Colors.END}")
+    return storage_path
+
+# ============================================================================
 # Dependencias
 # ============================================================================
 def check_python():
@@ -190,7 +249,7 @@ def check_python_module(module_name):
 
 def check_dependencies():
     print(f"\n{Colors.BOLD}📦 Verificando dependencias...{Colors.END}")
-    dependencies = ['flask', 'werkzeug', 'waitress', 'requests', 'qrcode']
+    dependencies = ['flask', 'werkzeug', 'waitress', 'requests']
     missing = []
     for dep in dependencies:
         if check_python_module(dep):
@@ -229,134 +288,75 @@ def install_cloudflared():
     sistema = get_system()
     print(f"\n{Colors.BOLD}🌐 Instalando Cloudflare Tunnel...{Colors.END}")
     if sistema == 'linux':
-        try:
-            subprocess.run(['sudo', 'pacman', '-S', '--noconfirm', 'cloudflared'], check=True)
-            print(f"{Colors.GREEN}  cloudflared instalado{Colors.END}")
-            return True
-        except:
-            pass
-    print(f"{Colors.YELLOW}  No se pudo instalar cloudflared{Colors.END}")
+        distro = get_linux_distro()
+        if distro == 'arch-based':
+            try:
+                subprocess.run(['sudo', 'pacman', '-S', '--noconfirm', 'cloudflared'], check=True)
+                print(f"{Colors.GREEN}  cloudflared instalado{Colors.END}")
+                return True
+            except:
+                pass
+        elif distro == 'debian-based':
+            try:
+                subprocess.run(['sudo', 'apt', 'update'], check=False)
+                subprocess.run(['sudo', 'apt', 'install', '-y', 'cloudflared'], check=True)
+                print(f"{Colors.GREEN}  cloudflared instalado{Colors.END}")
+                return True
+            except:
+                pass
+    print(f"{Colors.YELLOW}  No se pudo instalar cloudflared automáticamente. Descárgalo manualmente si lo necesitas.{Colors.END}")
     return False
 
 # ============================================================================
-# Configuración inicial
+# Configuración inicial (clave maestra)
 # ============================================================================
-def run_initial_setup(xoninas_dir):
-    if not xoninas_dir:
-        return False
-    
-    os.chdir(xoninas_dir)
-    
-    if os.path.exists('config.csv') and os.path.exists('master.csv'):
+def ensure_master_key(xoninas_dir):
+    """Crea la clave maestra si no existe"""
+    master_path = os.path.join(xoninas_dir, 'master.csv')
+    if os.path.exists(master_path):
         return True
     
-    print("\n" + "="*60)
-    print("   CONFIGURACIÓN INICIAL DE XONINAS")
-    print("="*60)
-    
-    if not os.path.exists('config.csv'):
-        default = str(os.path.abspath('storage'))
-        print(f"\nRuta de almacenamiento por defecto: {default}")
-        ruta = input("Nueva ruta (deja vacío para usar la de defecto): ").strip()
-        if not ruta:
-            ruta = default
-        else:
-            ruta = str(os.path.abspath(os.path.expanduser(ruta)))
-        os.makedirs(ruta, exist_ok=True)
-        with open('config.csv', 'w') as f:
-            f.write(f"storage_path,{ruta}\n")
-        print(f"{Colors.GREEN}✅ Ruta guardada: {ruta}{Colors.END}")
-    
-    if not os.path.exists('master.csv'):
-        print("\n" + "="*50)
-        print("    CONFIGURACIÓN DE CLAVE MAESTRA")
-        print("="*50)
-        pwd = input("Clave maestra (deja vacío para 'admin'): ").strip()
-        if not pwd:
-            pwd = "admin"
-            print("Usando 'admin' como clave maestra")
-        import hashlib
-        hashed = hashlib.sha256(pwd.encode()).hexdigest()
-        with open('master.csv', 'w') as f:
-            f.write(hashed)
-        print(f"{Colors.GREEN}✅ Clave maestra guardada.{Colors.END}")
-    
-    print(f"\n{Colors.GREEN}✅ Configuración completada.{Colors.END}")
-    print(f"{Colors.YELLOW}▶️  Vuelve a ejecutar 'python3 start.py' para iniciar el servidor.{Colors.END}")
-    return False
+    print("\n" + "="*50)
+    print("    CONFIGURACIÓN DE CLAVE MAESTRA")
+    print("="*50)
+    pwd = input("Clave maestra (deja vacío para 'admin'): ").strip()
+    if not pwd:
+        pwd = "admin"
+        print("Usando 'admin' como clave maestra")
+    import hashlib
+    hashed = hashlib.sha256(pwd.encode()).hexdigest()
+    with open(master_path, 'w') as f:
+        f.write(hashed)
+    print(f"{Colors.GREEN}✅ Clave maestra guardada.{Colors.END}")
+    return True
 
 # ============================================================================
-# Servidor
+# Ejecución del servidor (directamente, sin subproceso)
 # ============================================================================
-def is_server_alive(port=5000):
-    try:
-        import requests
-        r = requests.get(f"http://127.0.0.1:{port}/health", timeout=5)
-        return r.status_code == 200
-    except:
-        return False
-
-def cleanup_port(port=5000):
-    if get_system() == 'windows':
-        return
-    try:
-        result = subprocess.run(f"lsof -ti:{port}", shell=True, capture_output=True, text=True)
-        if result.stdout.strip():
-            for pid in result.stdout.strip().split('\n'):
-                try:
-                    os.kill(int(pid), signal.SIGTERM)
-                except:
-                    pass
-            time.sleep(2)
-    except:
-        pass
-
-def run_cloudflare_tunnel(port=5000):
-    cloudflared_cmd = shutil.which('cloudflared')
-    if not cloudflared_cmd:
-        return None
-    print(f"{Colors.CYAN}Iniciando túnel Cloudflare...{Colors.END}")
-    cmd = [cloudflared_cmd, 'tunnel', '--url', f'http://localhost:{port}']
-    try:
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-        url = None
-        for line in process.stdout:
-            if 'https://' in line and '.trycloudflare.com' in line:
-                import re
-                match = re.search(r'(https://[a-zA-Z0-9\-]+\.trycloudflare\.com)', line)
-                if match:
-                    url = match.group(1)
-                    print(f"\n{Colors.GREEN}🌍 Túnel Cloudflare: {url}{Colors.END}")
-                    break
-        return process
-    except:
-        return None
-
-def run_server(xoninas_dir, cloudflare_enabled=False):
-    print(f"\n{Colors.BOLD}🚀 Iniciando servidor XONINAS (Waitress)...{Colors.END}")
-    print(f"  Directorio: {xoninas_dir}")
-    print(f"  Threads: 6")
+def run_server_directly(xoninas_path, storage_path):
+    """
+    Ejecuta xoninas.py directamente pero con la variable STORAGE_FOLDER ya establecida.
+    Esto evita el KeyError porque la app leerá la variable de entorno.
+    """
+    print(f"\n{Colors.BOLD}🚀 Iniciando servidor XONINAS (modo directo)...{Colors.END}")
+    print(f"  Almacenamiento: {storage_path}")
     print(f"  Puerto: 5000")
-    print(f"  Autoreinicio: activado")
     print(f"{Colors.YELLOW}  Para detener: Ctrl+C{Colors.END}")
     print("-" * 60)
     
-    cleanup_port(5000)
+    # Establecer la variable de entorno para el subproceso
+    env = os.environ.copy()
+    env['STORAGE_FOLDER'] = storage_path
+    env['XONINAS_CONFIG_DIR'] = os.path.dirname(xoninas_path)
     
-    # Iniciar túnel si se solicita
-    cloudflare_process = None
-    if cloudflare_enabled:
-        cloudflare_process = run_cloudflare_tunnel(5000)
-    
-    # Ejecutar xoninas.py directamente (que mostrará el QR y abrirá el navegador)
-    cmd = get_python_command() + [os.path.join(xoninas_dir, 'xoninas.py')]
+    # Ejecutar xoninas.py con el entorno modificado
+    cmd = get_python_command() + [xoninas_path]
     try:
-        subprocess.run(cmd, cwd=xoninas_dir)
+        subprocess.run(cmd, env=env, cwd=os.path.dirname(xoninas_path))
     except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}Servidor detenido{Colors.END}")
-    finally:
-        if cloudflare_process:
-            cloudflare_process.terminate()
+        print(f"\n{Colors.YELLOW}🛑 Servidor detenido por el usuario{Colors.END}")
+    except Exception as e:
+        print(f"{Colors.RED}❌ Error al ejecutar xoninas.py: {e}{Colors.END}")
 
 # ============================================================================
 # Main
@@ -373,7 +373,6 @@ def main():
     distro = get_linux_distro()
     script_dir = get_script_dir()
     xoninas_path = get_xoninas_path()
-    xoninas_dir = os.path.dirname(xoninas_path) if xoninas_path else script_dir
     
     print(f"{Colors.BOLD}Sistema operativo:{Colors.END} {sistema}")
     if distro:
@@ -381,6 +380,9 @@ def main():
     print(f"{Colors.BOLD}Directorio de start.py:{Colors.END} {script_dir}")
     print(f"{Colors.BOLD}Ruta de xoninas.py:{Colors.END} {xoninas_path or 'NO ENCONTRADO'}")
     
+    # ====================================================================
+    # PASO 1: Verificar Python
+    # ====================================================================
     if not check_python():
         print(f"\n{Colors.RED}❌ Python no está instalado{Colors.END}")
         sys.exit(1)
@@ -388,47 +390,96 @@ def main():
     ver_py = subprocess.run(get_python_command() + ['--version'], capture_output=True, text=True).stdout.strip()
     print(f"{Colors.BOLD}Python:{Colors.END} {ver_py}")
     
+    # ====================================================================
+    # PASO 2: Verificar pip e instalarlo si falta
+    # ====================================================================
     if not check_pip():
         print(f"\n{Colors.YELLOW}⚠️ Pip no encontrado. Instalando...{Colors.END}")
         if sistema == 'linux':
             if not install_pip_linux():
-                print(f"{Colors.RED}No se pudo instalar pip{Colors.END}")
+                print(f"{Colors.RED}No se pudo instalar pip. Instálalo manualmente.{Colors.END}")
                 sys.exit(1)
         elif sistema == 'windows':
             if not install_pip_windows():
-                print(f"{Colors.RED}No se pudo instalar pip{Colors.END}")
+                print(f"{Colors.RED}No se pudo instalar pip. Ejecuta como administrador.{Colors.END}")
                 sys.exit(1)
+        else:
+            print(f"{Colors.YELLOW}Instala pip manualmente con: python -m ensurepip --upgrade{Colors.END}")
+            sys.exit(1)
     else:
         print(f"{Colors.GREEN}✓ Pip disponible{Colors.END}")
     
+    # ====================================================================
+    # PASO 3: Verificar e instalar dependencias
+    # ====================================================================
     missing = check_dependencies()
     if missing:
         print(f"\n{Colors.YELLOW}Faltan {len(missing)} dependencias.{Colors.END}")
         resp = input("¿Instalar automáticamente? (s/n): ")
         if resp.lower() == 's':
-            install_dependencies(missing)
+            if not install_dependencies(missing):
+                print(f"{Colors.YELLOW}Continuando a pesar de errores...{Colors.END}")
+        else:
+            print(f"{Colors.YELLOW}No se instalarán. El programa podría fallar.{Colors.END}")
     
-    if not xoninas_path:
+    # ====================================================================
+    # PASO 4: Asegurar STORAGE_FOLDER (robusto)
+    # ====================================================================
+    storage_path = ensure_storage_folder()
+    
+    # ====================================================================
+    # PASO 5: Verificar que existe xoninas.py
+    # ====================================================================
+    if not xoninas_path or not os.path.exists(xoninas_path):
         print(f"\n{Colors.RED}❌ No se encuentra xoninas.py{Colors.END}")
+        print(f"   Buscado en: {xoninas_path}")
         sys.exit(1)
     
-    if not run_initial_setup(xoninas_dir):
-        sys.exit(0)
+    # ====================================================================
+    # PASO 6: Asegurar clave maestra
+    # ====================================================================
+    xoninas_dir = os.path.dirname(xoninas_path)
+    if not ensure_master_key(xoninas_dir):
+        print(f"{Colors.RED}❌ No se pudo configurar la clave maestra.{Colors.END}")
+        sys.exit(1)
     
+    # ====================================================================
+    # PASO 7: (Opcional) Cloudflare Tunnel
+    # ====================================================================
     cloudflare_enabled = False
-    resp = input(f"\n{Colors.BOLD}🌐 ¿Activar túnel Cloudflare? (s/n): {Colors.END}")
+    resp = input(f"\n{Colors.BOLD}🌐 ¿Activar túnel Cloudflare para acceso remoto? (s/n): {Colors.END}")
     if resp.lower() == 's':
         cloudflare_enabled = True
         if not check_cloudflared():
             install_cloudflared()
+        if check_cloudflared():
+            print(f"{Colors.GREEN}✅ cloudflared disponible. El túnel se iniciará junto con XONINAS.{Colors.END}")
+            # Lanzar cloudflared en segundo plano
+            try:
+                subprocess.Popen(['cloudflared', 'tunnel', '--url', 'http://localhost:5000'],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"{Colors.CYAN}🔗 Túnel Cloudflare iniciado (trycloudflare.com){Colors.END}")
+            except:
+                print(f"{Colors.YELLOW}⚠️ No se pudo iniciar cloudflared automáticamente.{Colors.END}")
+        else:
+            print(f"{Colors.YELLOW}⚠️ cloudflared no disponible. No se activará el túnel.{Colors.END}")
+            cloudflare_enabled = False
     
+    # ====================================================================
+    # PASO 8: Ejecutar XONINAS
+    # ====================================================================
     try:
-        run_server(xoninas_dir, cloudflare_enabled)
+        run_server_directly(xoninas_path, storage_path)
     except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}🛑 Servidor detenido{Colors.END}")
+        print(f"\n{Colors.YELLOW}🛑 Servidor detenido por el usuario{Colors.END}")
+    except Exception as e:
+        print(f"{Colors.RED}❌ Error inesperado: {e}{Colors.END}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
         print(f"\n{Colors.YELLOW}Saliendo...{Colors.END}")
+    except Exception as e:
+        print(f"\n{Colors.RED}Error inesperado: {e}{Colors.END}")
