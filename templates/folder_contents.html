@@ -207,9 +207,7 @@
     const selectedFilesDiv = document.getElementById('selectedFiles');
     
     let selectedFiles = [];
-    let selectedFolders = [];
 
-    // Drag & drop
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.classList.add('drag-over');
@@ -277,18 +275,7 @@
         
         const formData = new FormData();
         for (const file of selectedFiles) {
-            const relativePath = file.relativePath || file.webkitRelativePath || '';
-            if (relativePath) {
-                const parts = relativePath.split('/');
-                if (parts.length > 1) {
-                    const folder = parts[0];
-                    formData.append('files', file);
-                } else {
-                    formData.append('files', file);
-                }
-            } else {
-                formData.append('files', file);
-            }
+            formData.append('files', file);
         }
         
         fetch('/upload/{{ folder_name }}', {
