@@ -46,7 +46,58 @@ cd xoninas
 python3 start.py
 ```
 
-> **Nota:** Esta función te servirá para instalar cualquier otra herramienta futura de XONIDU (por ejemplo `xoninstall xoninas`, `xoninstall xoninas`).
+> **Nota:** Esta función te servirá para instalar cualquier otra herramienta futura de XONIDU (por ejemplo `xoninstall xoniran`, `xoninstall xonicli`).
+
+---
+
+## 🪟 Script para Windows (INICIAR_XONINAS.bat)
+
+Guarda este contenido como `INICIAR_XONINAS.bat` en la carpeta de XONINAS y ejecútalo con doble clic:
+
+```batch
+@echo off
+title XONINAS 2026 - NAS Local con Carpetas Protegidas
+color 0A
+
+:: ============================================================
+:: SOLICITAR PERMISOS DE ADMINISTRADOR
+:: ============================================================
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo Solicitando permisos de administrador...
+    echo.
+    echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"
+    echo UAC.ShellExecute "%~s0", "", "", "runas", 1 >> "%temp%\getadmin.vbs"
+    "%temp%\getadmin.vbs"
+    del "%temp%\getadmin.vbs"
+    exit /B
+)
+
+:: ============================================================
+:: EJECUTAR start.py CON PERMISOS DE ADMINISTRADOR
+:: ============================================================
+cls
+echo ============================================================
+echo           XONINAS 2026 - NAS Local
+echo              (Modo Administrador)
+echo ============================================================
+echo.
+echo [OK] Permisos de administrador obtenidos
+echo.
+echo Iniciando XONINAS...
+echo.
+echo [INFO] Sistema de almacenamiento con carpetas protegidas
+echo [INFO] Accede a: http://localhost:5000
+echo [INFO] Desde tu red local: http://<TU-IP>:5000
+echo.
+echo Presiona Ctrl+C para detener el servidor
+echo ============================================================
+echo.
+
+python start.py
+
+pause
+```
 
 ---
 
@@ -83,9 +134,9 @@ Compártela (junto con la clave maestra) para acceder desde cualquier lugar.
 
 - **Crear carpeta** – Escribe un nombre y (opcionalmente) una contraseña.  
 - **Entrar a una carpeta** – Si está protegida, se pedirá la contraseña una sola vez por sesión.  
-- **Subir archivos** – Botón “Subir archivo” (límite por defecto 10 GB).  
+- **Subir archivos** – Botón "Subir archivo" (límite por defecto 10 GB).  
 - **Descargar / eliminar archivos** – Botones junto a cada archivo.  
-- **Cerrar sesión** – Botón “Cerrar sesión” (borra la clave maestra y los permisos de carpetas).
+- **Cerrar sesión** – Botón "Cerrar sesión" (borra la clave maestra y los permisos de carpetas).
 
 ---
 
@@ -153,5 +204,3 @@ Todos los derechos reservados. No se permite la copia, distribución o modificac
 
 Hecho con 🖥️ y código para los amantes del almacenamiento autogestionado.  
 **XONINAS** – Tu nube privada, simple y segura.
-
-
