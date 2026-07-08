@@ -5,6 +5,7 @@
 XONINAS 2026 - Lanzador Ultrarrobusto
 NAS Local con Carpetas Protegidas
 Incluye gestion automatica de STORAGE_FOLDER, pip, dependencias y Cloudflare Tunnel
+Captura la URL del tunel y la pasa a xoninas.py
 
 Desarrollado por: Darian Alberto Camacho Salas
 Organizacion: XONIDU
@@ -21,6 +22,7 @@ import time
 import signal
 import webbrowser
 import csv
+import re
 from pathlib import Path
 
 # ============================================================================
@@ -301,6 +303,37 @@ def install_cloudflared():
     print(f"{Colors.YELLOW}  No se pudo instalar cloudflared automaticamente.{Colors.END}")
     return False
 
+def start_cloudflare_tunnel(port=5000):
+    """Inicia cloudflared, captura la URL y la guarda en variable de entorno"""
+    cloudflared_cmd = shutil.which('cloudflared')
+    if not cloudflared_cmd:
+        print(f"{Colors.RED}cloudflared no encontrado.{Colors.END}")
+        return None
+    
+    print(f"{Colors.CYAN}Iniciando tunel Cloudflare...{Colors.END}")
+    cmd = [cloudflared_cmd, 'tunnel', '--url', f'http://localhost:{port}']
+    
+    try:
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   universal_newlines=True, bufsize=1)
+        url = None
+        for line in process.stdout:
+            print(f"[cloudflared] {line.strip()}")
+            if 'https://' in line and '.trycloudflare.com' in line:
+                match = re.search(r'(https://[a-zA-Z0-9\-]+\.trycloudflare\.com)', line)
+                if match:
+                    url = match.group(1)
+                    break
+        if url:
+            print(f"{Colors.GREEN}Tunel Cloudflare activo: {url}{Colors.END}")
+            os.environ['TUNNEL_URL'] = url
+        else:
+            print(f"{Colors.YELLOW}No se pudo detectar la URL del tunel.{Colors.END}")
+        return process
+    except Exception as e:
+        print(f"{Colors.RED}Error al iniciar cloudflared: {e}{Colors.END}")
+        return None
+
 # ============================================================================
 # Configuracion inicial (clave maestra)
 # ============================================================================
@@ -336,6 +369,9 @@ def run_server_directly(xoninas_path, storage_path):
     env = os.environ.copy()
     env['STORAGE_FOLDER'] = storage_path
     env['XONINAS_CONFIG_DIR'] = os.path.dirname(xoninas_path)
+    # Si hay URL del tunel, pasarla
+    if 'TUNNEL_URL' in os.environ:
+        env['TUNNEL_URL'] = os.environ['TUNNEL_URL']
     
     cmd = get_python_command() + [xoninas_path]
     try:
@@ -417,18 +453,14 @@ def main():
         print(f"{Colors.RED}No se pudo configurar la clave maestra.{Colors.END}")
         sys.exit(1)
     
-    # Cloudflare Tunnel (opcional)
+    # Cloudflare Tunnel
     resp = input(f"\n{Colors.BOLD}Activar tunel Cloudflare para acceso remoto? (s/n): {Colors.END}")
     if resp.lower() == 's':
         if not check_cloudflared():
             install_cloudflared()
         if check_cloudflared():
-            try:
-                subprocess.Popen(['cloudflared', 'tunnel', '--url', 'http://localhost:5000'],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                print(f"{Colors.CYAN}Tunel Cloudflare iniciado (trycloudflare.com){Colors.END}")
-            except:
-                print(f"{Colors.YELLOW}No se pudo iniciar cloudflared.{Colors.END}")
+            tunnel_process = start_cloudflare_tunnel(5000)
+            time.sleep(2)
         else:
             print(f"{Colors.YELLOW}cloudflared no disponible.{Colors.END}")
     
