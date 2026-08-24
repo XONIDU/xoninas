@@ -5,6 +5,7 @@
 XONINAS 2026 v4.2.0 - NAS Local con Carpetas Protegidas y Soporte de Impresión
 Soporte para subida multiple, subcarpetas, QR, IP y autoapertura del navegador
 Soporte para impresión remota (puente entre dispositivos e impresora)
+Detección robusta de impresoras USB y de red
 
 Desarrollado por: Darian Alberto Camacho Salas
 Organizacion: XONIDU
@@ -26,6 +27,7 @@ import tempfile
 import mimetypes
 import subprocess
 import platform
+import re
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, session, send_file
@@ -260,73 +262,322 @@ def get_file_icon(filename):
         return '📎'
 
 # ============================================================================
-# Funciones de impresión
+# FUNCIONES ROBUSTAS DE DETECCIÓN DE IMPRESORAS
 # ============================================================================
 def get_system_printers():
-    """Obtiene lista de impresoras disponibles en el sistema"""
+    """Obtiene lista de impresoras disponibles en el sistema con múltiples métodos"""
     printers = []
     sistema = platform.system()
     
+    print(f"{Colors.CYAN}🔍 Detectando impresoras en {sistema}...{Colors.END}")
+    
+    if sistema == 'Windows':
+        printers = get_windows_printers()
+    elif sistema == 'Linux':
+        printers = get_linux_printers()
+    elif sistema == 'Darwin':
+        printers = get_mac_printers()
+    
+    # Filtrar duplicados por nombre
+    seen = set()
+    unique_printers = []
+    for p in printers:
+        name = p.get('name', '').strip()
+        if name and name not in seen:
+            seen.add(name)
+            unique_printers.append(p)
+    
+    if unique_printers:
+        print(f"{Colors.GREEN}✅ Detectadas {len(unique_printers)} impresoras{Colors.END}")
+        for p in unique_printers[:5]:
+            print(f"   {Colors.GREEN}• {p['name']}{Colors.END}{' (por defecto)' if p.get('default') else ''}")
+        if len(unique_printers) > 5:
+            print(f"   {Colors.YELLOW}... y {len(unique_printers) - 5} más{Colors.END}")
+    else:
+        print(f"{Colors.YELLOW}⚠️ No se detectaron impresoras{Colors.END}")
+    
+    return unique_printers
+
+def get_windows_printers():
+    """Detección de impresoras en Windows (múltiples métodos)"""
+    printers = []
+    
+    # Método 1: wmic (más completo)
     try:
-        if sistema == 'Windows':
-            result = subprocess.run(
-                ['wmic', 'printer', 'get', 'name,default'],
-                capture_output=True, text=True, shell=True
-            )
-            if result.returncode == 0:
-                lines = result.stdout.strip().split('\n')[1:]
-                for line in lines:
+        result = subprocess.run(
+            ['wmic', 'printer', 'get', 'name,default,shared,network,local'],
+            capture_output=True, text=True, shell=True, timeout=10
+        )
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            if len(lines) > 1:
+                for line in lines[1:]:
                     if line.strip():
                         parts = line.split()
                         if parts:
+                            name = ' '.join(parts[:-3]) if len(parts) > 3 else parts[0]
                             printers.append({
-                                'name': ' '.join(parts[:-1]) if len(parts) > 1 else parts[0],
-                                'default': 'TRUE' in line if 'TRUE' in line else False
+                                'name': name.strip(),
+                                'default': 'TRUE' in line if 'TRUE' in line else False,
+                                'type': 'Windows'
                             })
-        else:
-            # Linux/macOS: usar lpstat
+    except Exception as e:
+        print(f"  wmic falló: {e}")
+    
+    # Método 2: PowerShell (Get-Printer)
+    if not printers:
+        try:
+            ps_cmd = 'Get-Printer | Select-Object Name, Default'
             result = subprocess.run(
-                ['lpstat', '-p', '-d'],
-                capture_output=True, text=True
+                ['powershell', '-Command', ps_cmd],
+                capture_output=True, text=True, timeout=15
             )
             if result.returncode == 0:
                 for line in result.stdout.split('\n'):
-                    if 'printer' in line and 'enabled' in line:
-                        name = line.split(' ')[1] if len(line.split(' ')) > 1 else line
-                        printers.append({
-                            'name': name.strip(),
-                            'default': 'default' in line
-                        })
-    except Exception as e:
-        print(f"Error obteniendo impresoras: {e}")
+                    if line.strip() and not line.startswith('Name'):
+                        parts = line.split()
+                        if parts:
+                            printers.append({
+                                'name': parts[0].strip(),
+                                'default': 'True' in line if 'True' in line else False,
+                                'type': 'PowerShell'
+                            })
+        except Exception as e:
+            print(f"  PowerShell falló: {e}")
     
+    # Método 3: impresoras por USB (Windows)
+    try:
+        result = subprocess.run(
+            ['wmic', 'path', 'Win32_USBControllerDevice', 'get', 'dependent'],
+            capture_output=True, text=True, shell=True, timeout=10
+        )
+        # Este método requiere procesamiento adicional, lo dejamos como respaldo
+    except:
+        pass
+    
+    # Método 4: Impresoras de red SMB
+    try:
+        result = subprocess.run(
+            ['net', 'view'],
+            capture_output=True, text=True, shell=True, timeout=10
+        )
+        # Las impresoras de red aparecen como recursos compartidos
+    except:
+        pass
+    
+    return printers
+
+def get_linux_printers():
+    """Detección de impresoras en Linux (múltiples métodos)"""
+    printers = []
+    
+    # Método 1: lpstat (CUPS)
+    try:
+        result = subprocess.run(
+            ['lpstat', '-p', '-d'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            default_printer = None
+            for line in result.stdout.split('\n'):
+                if 'printer' in line and 'enabled' in line:
+                    name_match = re.search(r'printer\s+([^\s]+)', line)
+                    if name_match:
+                        name = name_match.group(1)
+                        printers.append({
+                            'name': name,
+                            'default': False,
+                            'type': 'CUPS'
+                        })
+                if 'system default destination' in line:
+                    default_match = re.search(r'destination:\s+([^\s]+)', line)
+                    if default_match:
+                        default_printer = default_match.group(1)
+            
+            # Marcar la impresora por defecto
+            if default_printer:
+                for p in printers:
+                    if p['name'] == default_printer:
+                        p['default'] = True
+    except Exception as e:
+        print(f"  lpstat falló: {e}")
+    
+    # Método 2: lpinfo para impresoras USB y de red
+    try:
+        # Impresoras USB
+        result = subprocess.run(
+            ['lpinfo', '-v'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            usb_printers = []
+            for line in result.stdout.split('\n'):
+                if 'direct usb' in line or 'serial' in line:
+                    name_match = re.search(r'usb://([^/]+)/?', line)
+                    if name_match:
+                        usb_printers.append(name_match.group(1))
+                elif 'direct ipp' in line or 'network' in line:
+                    name_match = re.search(r'ipp://([^/]+)', line)
+                    if name_match:
+                        usb_printers.append(name_match.group(1))
+            
+            # Añadir impresoras USB no duplicadas
+            for name in usb_printers:
+                if not any(p['name'] == name for p in printers):
+                    printers.append({
+                        'name': name,
+                        'default': False,
+                        'type': 'USB/Network'
+                    })
+    except Exception as e:
+        print(f"  lpinfo falló: {e}")
+    
+    # Método 3: Impresoras por avahi-browse (detección de red)
+    if shutil.which('avahi-browse'):
+        try:
+            result = subprocess.run(
+                ['avahi-browse', '-r', '-p', '-t', '_ipp._tcp'],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if '=' in line:
+                        parts = line.split(';')
+                        if len(parts) > 6:
+                            name = parts[3] if len(parts) > 3 else ''
+                            if name and not any(p['name'] == name for p in printers):
+                                printers.append({
+                                    'name': name,
+                                    'default': False,
+                                    'type': 'Avahi'
+                                })
+        except:
+            pass
+    
+    # Método 4: Impresoras directamente conectadas (lsusb)
+    if shutil.which('lsusb'):
+        try:
+            result = subprocess.run(
+                ['lsusb'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if 'printer' in line.lower():
+                        name_match = re.search(r'ID\s+[0-9a-f:]+', line)
+                        if name_match:
+                            name = f"USB Printer ({line.strip()})"
+                            if not any(p['name'] == name for p in printers):
+                                printers.append({
+                                    'name': name,
+                                    'default': False,
+                                    'type': 'USB'
+                                })
+        except:
+            pass
+    
+    return printers
+
+def get_mac_printers():
+    """Detección de impresoras en macOS"""
+    printers = []
+    
+    # Método 1: lpstat (CUPS en macOS)
+    try:
+        result = subprocess.run(
+            ['lpstat', '-p', '-d'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            default_printer = None
+            for line in result.stdout.split('\n'):
+                if 'printer' in line and 'enabled' in line:
+                    name_match = re.search(r'printer\s+([^\s]+)', line)
+                    if name_match:
+                        name = name_match.group(1)
+                        printers.append({
+                            'name': name,
+                            'default': False,
+                            'type': 'CUPS'
+                        })
+                if 'system default destination' in line:
+                    default_match = re.search(r'destination:\s+([^\s]+)', line)
+                    if default_match:
+                        default_printer = default_match.group(1)
+            
+            if default_printer:
+                for p in printers:
+                    if p['name'] == default_printer:
+                        p['default'] = True
+    except Exception as e:
+        print(f"  lpstat falló: {e}")
+    
+    # Método 2: system_profiler
+    try:
+        result = subprocess.run(
+            ['system_profiler', 'SPPrintersDataType'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            lines = result.stdout.split('\n')
+            current_printer = None
+            for line in lines:
+                if 'Printer Name' in line:
+                    name_match = re.search(r'Printer Name:\s+(.+)', line)
+                    if name_match:
+                        current_printer = name_match.group(1).strip()
+                        if current_printer and not any(p['name'] == current_printer for p in printers):
+                            printers.append({
+                                'name': current_printer,
+                                'default': False,
+                                'type': 'SystemProfiler'
+                            })
+                elif 'Default' in line and current_printer:
+                    for p in printers:
+                        if p['name'] == current_printer:
+                            p['default'] = True
+    except:
+        pass
+    
+    return printers
+
+def refresh_printers():
+    """Actualiza la lista de impresoras desde el sistema y la guarda en CSV"""
+    printers = get_system_printers()
+    if printers:
+        with open(PRINTERS_CSV, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['name', 'default', 'type'])
+            writer.writeheader()
+            for p in printers:
+                writer.writerow({
+                    'name': p['name'], 
+                    'default': str(p.get('default', False)),
+                    'type': p.get('type', 'Unknown')
+                })
     return printers
 
 def load_printers():
     """Carga la lista de impresoras desde CSV o del sistema"""
     if not os.path.exists(PRINTERS_CSV):
-        printers = get_system_printers()
-        if printers:
-            with open(PRINTERS_CSV, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['name', 'default'])
-                writer.writeheader()
-                for p in printers:
-                    writer.writerow({'name': p['name'], 'default': str(p.get('default', False))})
-        return printers
+        return refresh_printers()
     
-    with open(PRINTERS_CSV, 'r') as f:
-        reader = csv.DictReader(f)
-        return [{'name': row['name'], 'default': row.get('default', 'False') == 'True'} for row in reader]
-
-def refresh_printers():
-    """Actualiza la lista de impresoras desde el sistema"""
-    printers = get_system_printers()
-    if printers:
-        with open(PRINTERS_CSV, 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=['name', 'default'])
-            writer.writeheader()
-            for p in printers:
-                writer.writerow({'name': p['name'], 'default': str(p.get('default', False))})
+    printers = []
+    try:
+        with open(PRINTERS_CSV, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                printers.append({
+                    'name': row['name'],
+                    'default': row.get('default', 'False') == 'True',
+                    'type': row.get('type', 'Unknown')
+                })
+    except:
+        return refresh_printers()
+    
+    # Si no hay impresoras en CSV, actualizar desde el sistema
+    if not printers:
+        return refresh_printers()
+    
     return printers
 
 def print_file(file_path, printer_name=None):
@@ -342,19 +593,21 @@ def print_file(file_path, printer_name=None):
                 cmd = ['print', '/D:' + printer_name, file_path]
             else:
                 cmd = ['print', file_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=60)
         else:
             cmd = ['lp']
             if printer_name:
                 cmd.extend(['-d', printer_name])
             cmd.append(file_path)
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         
         if result.returncode == 0:
             return True, result.stdout or "Impresión enviada correctamente"
         else:
             return False, result.stderr or "Error al imprimir"
             
+    except subprocess.TimeoutExpired:
+        return False, "Tiempo de espera agotado. Verifica que la impresora esté conectada."
     except Exception as e:
         return False, str(e)
 
@@ -371,19 +624,21 @@ def print_text(text, printer_name=None):
                 cmd = ['print', '/D:' + printer_name, temp_file]
             else:
                 cmd = ['print', temp_file]
-            result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=60)
             os.unlink(temp_file)
         else:
             cmd = ['lp']
             if printer_name:
                 cmd.extend(['-d', printer_name])
-            result = subprocess.run(cmd, input=text, capture_output=True, text=True)
+            result = subprocess.run(cmd, input=text, capture_output=True, text=True, timeout=60)
         
         if result.returncode == 0:
             return True, result.stdout or "Texto impreso correctamente"
         else:
             return False, result.stderr or "Error al imprimir"
             
+    except subprocess.TimeoutExpired:
+        return False, "Tiempo de espera agotado."
     except Exception as e:
         return False, str(e)
 
@@ -644,7 +899,6 @@ def print_file_route():
     if not file_path.exists():
         return "Archivo no encontrado", 404
     
-    # Verificar formato imprimible
     ext = os.path.splitext(filename)[1].lower()
     print_extensions = ['.pdf', '.txt', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.bmp']
     if ext not in print_extensions:
@@ -691,15 +945,12 @@ def print_upload_route():
     if file.filename == '':
         return "Nombre de archivo vacío", 400
     
-    # Guardar en cola de impresión
     filename = secure_filename(file.filename.replace(' ', '_'))
     queue_path = Path(PRINT_QUEUE_DIR) / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
     file.save(queue_path)
     
-    # Intentar imprimir
     success, message = print_file(str(queue_path), printer_name if printer_name else None)
     
-    # Eliminar después de intentar imprimir (o mantener para debug)
     try:
         os.unlink(queue_path)
     except:
@@ -740,17 +991,19 @@ def print_startup_info():
         if qr_url is None:
             qr_url = TUNNEL_URL
     
-    # Mostrar impresoras
+    # Mostrar impresoras detectadas
     printers = load_printers()
-    print(f"\n{Colors.BOLD}🖨️ Impresoras disponibles:{Colors.END}")
+    print(f"\n{Colors.BOLD}🖨️ Impresoras detectadas:{Colors.END}")
     if printers:
-        for p in printers[:5]:
-            print(f"   {Colors.GREEN}• {p['name']}{Colors.END}{' (por defecto)' if p.get('default') else ''}")
-        if len(printers) > 5:
-            print(f"   {Colors.YELLOW}... y {len(printers) - 5} más{Colors.END}")
+        for p in printers[:8]:
+            default_text = " (por defecto)" if p.get('default') else ""
+            type_text = f" [{p.get('type', 'Unknown')}]" if p.get('type') else ""
+            print(f"   {Colors.GREEN}• {p['name']}{Colors.END}{default_text}{type_text}")
+        if len(printers) > 8:
+            print(f"   {Colors.YELLOW}... y {len(printers) - 8} más{Colors.END}")
     else:
-        print(f"   {Colors.YELLOW}No se detectaron impresoras{Colors.END}")
-        print(f"   {Colors.YELLOW}Usa /print/refresh para buscar impresoras{Colors.END}")
+        print(f"   {Colors.YELLOW}⚠️ No se detectaron impresoras{Colors.END}")
+        print(f"   {Colors.YELLOW}   Usa /print/refresh para buscar impresoras manualmente{Colors.END}")
     
     if qr_url:
         print(f"\n{Colors.BOLD}Codigo QR para escanear:{Colors.END}")

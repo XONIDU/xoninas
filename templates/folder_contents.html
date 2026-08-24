@@ -60,6 +60,33 @@
             padding: 1.5rem;
             margin-bottom: 2rem;
         }
+        .upload-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #222;
+            padding-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .upload-tab {
+            background: transparent;
+            color: #888;
+            border: 1px solid #333;
+            padding: 8px 20px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: 0.3s;
+            font-weight: 500;
+        }
+        .upload-tab.active {
+            background: #6f2da8;
+            color: #fff;
+            border-color: #6f2da8;
+        }
+        .upload-tab:hover {
+            border-color: #6f2da8;
+            color: #0f0;
+        }
         .upload-area {
             border: 2px dashed #6f2da8;
             border-radius: 20px;
@@ -76,14 +103,18 @@
         .upload-area input {
             display: none;
         }
+        .upload-area .icon-big {
+            font-size: 3rem;
+            display: block;
+            margin-bottom: 10px;
+        }
         .btn-primary {
             background: #00aa55;
             border: none;
-            padding: 0.6rem 1.2rem;
+            padding: 0.6rem 1.5rem;
             border-radius: 40px;
             font-weight: bold;
             cursor: pointer;
-            margin-right: 0.5rem;
             color: #000;
             transition: 0.2s;
         }
@@ -94,7 +125,7 @@
         .btn-secondary {
             background: #6f2da8;
             border: none;
-            padding: 0.6rem 1.2rem;
+            padding: 0.6rem 1.5rem;
             border-radius: 40px;
             color: white;
             cursor: pointer;
@@ -122,9 +153,52 @@
             color: #0f0;
             flex: 1;
             outline: none;
+            min-width: 150px;
         }
         .subfolder-form input:focus {
             border-color: #00ff88;
+        }
+        .file-list-upload {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+            background: #0a0a0a;
+            border-radius: 12px;
+            padding: 10px;
+        }
+        .file-item-upload {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 10px;
+            border-bottom: 1px solid #1a1a1a;
+            font-size: 0.85rem;
+        }
+        .file-item-upload .remove-file {
+            color: #ff4444;
+            cursor: pointer;
+        }
+        .file-item-upload .remove-file:hover {
+            color: #ff6666;
+        }
+        .selected-count {
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+        .upload-progress {
+            width: 100%;
+            height: 4px;
+            background: #222;
+            border-radius: 2px;
+            margin-top: 10px;
+            overflow: hidden;
+            display: none;
+        }
+        .upload-progress .bar {
+            height: 100%;
+            background: linear-gradient(90deg, #6f2da8, #00ff88);
+            width: 0%;
+            transition: width 0.3s;
         }
         table {
             width: 100%;
@@ -154,22 +228,23 @@
         .delete { color: #f77 !important; }
         .delete:hover { color: #ff4444 !important; }
         .empty { text-align: center; padding: 2rem; color: #666; }
-        .selected-count {
-            margin-top: 1rem;
-            font-size: 0.8rem;
-            color: #aaa;
-        }
         @media (max-width: 768px) {
             body { padding: 1rem; }
             th, td { padding: 6px; font-size: 0.8rem; }
             header { flex-direction: column; align-items: stretch; text-align: center; }
             .back { text-align: center; }
+            .upload-tabs { justify-content: center; }
         }
         @media (max-width: 480px) {
             .upload-area { padding: 1rem; }
             .subfolder-form { flex-direction: column; }
             .subfolder-form input { width: 100%; }
+            .upload-tab { font-size: 0.8rem; padding: 6px 12px; }
         }
+        /* Scroll personalizado */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #6f2da8; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -184,23 +259,62 @@
     </header>
 
     <div class="upload-panel">
-        <div class="upload-area" id="dropZone">
-            <div id="uploadText">📁 Arrastra archivos o carpetas aquí</div>
-            <div style="font-size:0.8rem; color:#666; margin-top:0.5rem;">O haz clic para seleccionar</div>
-            <input type="file" id="fileInput" multiple webkitdirectory directory>
+        <!-- PESTAÑAS DE SUBIDA -->
+        <div class="upload-tabs">
+            <button class="upload-tab active" data-mode="files" onclick="switchMode('files')">📄 Archivos</button>
+            <button class="upload-tab" data-mode="folder" onclick="switchMode('folder')">📁 Carpeta completa</button>
+            <button class="upload-tab" data-mode="zip" onclick="switchMode('zip')">📦 Subir ZIP</button>
         </div>
-        <div id="selectedFiles" class="selected-count"></div>
-        <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
-            <button id="uploadBtn" class="btn-primary">⬆ Subir seleccionados</button>
-            <button id="uploadZipBtn" class="btn-secondary">📦 Subir carpeta (ZIP)</button>
+
+        <!-- MODO ARCHIVOS INDIVIDUALES -->
+        <div id="mode-files" class="upload-mode">
+            <div class="upload-area" id="dropZoneFiles">
+                <span class="icon-big">📄</span>
+                <div id="uploadTextFiles">Arrastra archivos aquí o haz clic para seleccionar</div>
+                <div style="font-size:0.8rem; color:#666; margin-top:0.5rem;">Selecciona varios archivos (Ctrl+clic)</div>
+                <input type="file" id="fileInputFiles" multiple>
+            </div>
+            <div id="selectedFilesFiles" class="selected-count">📎 0 archivo(s) seleccionado(s)</div>
+            <div class="file-list-upload" id="fileListFiles"></div>
+            <button id="uploadBtnFiles" class="btn-primary" style="margin-top:10px;">⬆ Subir archivos seleccionados</button>
+            <div class="upload-progress" id="progressFiles"><div class="bar" id="progressBarFiles"></div></div>
+        </div>
+
+        <!-- MODO CARPETA COMPLETA -->
+        <div id="mode-folder" class="upload-mode" style="display:none;">
+            <div class="upload-area" id="dropZoneFolder">
+                <span class="icon-big">📁</span>
+                <div id="uploadTextFolder">Arrastra una carpeta aquí o haz clic para seleccionar</div>
+                <div style="font-size:0.8rem; color:#666; margin-top:0.5rem;">Mantiene toda la estructura de subcarpetas</div>
+                <input type="file" id="fileInputFolder" webkitdirectory directory>
+            </div>
+            <div id="selectedFilesFolder" class="selected-count">📁 0 archivo(s) en la carpeta</div>
+            <div class="file-list-upload" id="fileListFolder"></div>
+            <button id="uploadBtnFolder" class="btn-primary" style="margin-top:10px;">⬆ Subir carpeta completa</button>
+            <div class="upload-progress" id="progressFolder"><div class="bar" id="progressBarFolder"></div></div>
+        </div>
+
+        <!-- MODO SUBIR ZIP -->
+        <div id="mode-zip" class="upload-mode" style="display:none;">
+            <div class="upload-area" id="dropZoneZip">
+                <span class="icon-big">📦</span>
+                <div id="uploadTextZip">Arrastra un archivo ZIP aquí o haz clic para seleccionar</div>
+                <div style="font-size:0.8rem; color:#666; margin-top:0.5rem;">El ZIP se extraerá automáticamente</div>
+                <input type="file" id="fileInputZip" accept=".zip">
+            </div>
+            <div id="selectedFilesZip" class="selected-count">📦 Ningún ZIP seleccionado</div>
+            <button id="uploadBtnZip" class="btn-primary" style="margin-top:10px;">⬆ Subir y extraer ZIP</button>
+            <div class="upload-progress" id="progressZip"><div class="bar" id="progressBarZip"></div></div>
         </div>
     </div>
 
+    <!-- CREAR SUBCARPETA -->
     <div class="subfolder-form">
-        <input type="text" id="subfolderName" placeholder="Nueva subcarpeta">
+        <input type="text" id="subfolderName" placeholder="📁 Nueva subcarpeta">
         <button id="createSubfolderBtn" class="btn-secondary">➕ Crear subcarpeta</button>
     </div>
 
+    <!-- LISTADO DE ARCHIVOS -->
     <table>
         <thead>
             <tr>
@@ -245,41 +359,154 @@
 </div>
 
 <script>
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const uploadZipBtn = document.getElementById('uploadZipBtn');
-    const subfolderNameInput = document.getElementById('subfolderName');
-    const createSubfolderBtn = document.getElementById('createSubfolderBtn');
-    const selectedFilesDiv = document.getElementById('selectedFiles');
-    
+    // ============================================================
+    // VARIABLES GLOBALES
+    // ============================================================
+    let currentMode = 'files';
     let selectedFiles = [];
+    let selectedFolderFiles = [];
 
-    dropZone.addEventListener('dragover', (e) => {
+    // ============================================================
+    // CAMBIO DE MODO
+    // ============================================================
+    function switchMode(mode) {
+        currentMode = mode;
+        document.querySelectorAll('.upload-mode').forEach(el => el.style.display = 'none');
+        document.getElementById('mode-' + mode).style.display = 'block';
+        document.querySelectorAll('.upload-tab').forEach(el => el.classList.remove('active'));
+        document.querySelector(`.upload-tab[data-mode="${mode}"]`).classList.add('active');
+        
+        // Resetear selecciones
+        if (mode === 'files') {
+            document.getElementById('selectedFilesFiles').textContent = '📎 0 archivo(s) seleccionado(s)';
+            document.getElementById('fileListFiles').innerHTML = '';
+            selectedFiles = [];
+        } else if (mode === 'folder') {
+            document.getElementById('selectedFilesFolder').textContent = '📁 0 archivo(s) en la carpeta';
+            document.getElementById('fileListFolder').innerHTML = '';
+            selectedFolderFiles = [];
+        } else if (mode === 'zip') {
+            document.getElementById('selectedFilesZip').textContent = '📦 Ningún ZIP seleccionado';
+        }
+    }
+
+    // ============================================================
+    // MODO ARCHIVOS INDIVIDUALES
+    // ============================================================
+    const dropZoneFiles = document.getElementById('dropZoneFiles');
+    const fileInputFiles = document.getElementById('fileInputFiles');
+
+    dropZoneFiles.addEventListener('dragover', (e) => {
         e.preventDefault();
-        dropZone.classList.add('drag-over');
+        dropZoneFiles.classList.add('drag-over');
     });
-    
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('drag-over');
+    dropZoneFiles.addEventListener('dragleave', () => {
+        dropZoneFiles.classList.remove('drag-over');
     });
-    
-    dropZone.addEventListener('drop', (e) => {
+    dropZoneFiles.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropZone.classList.remove('drag-over');
+        dropZoneFiles.classList.remove('drag-over');
+        const files = Array.from(e.dataTransfer.files);
+        addFilesToSelection(files);
+    });
+    dropZoneFiles.addEventListener('click', () => {
+        fileInputFiles.click();
+    });
+    fileInputFiles.addEventListener('change', (e) => {
+        addFilesToSelection(Array.from(e.target.files));
+        e.target.value = '';
+    });
+
+    function addFilesToSelection(files) {
+        selectedFiles = [...selectedFiles, ...files];
+        updateFileListUI();
+    }
+
+    function updateFileListUI() {
+        const container = document.getElementById('fileListFiles');
+        const count = document.getElementById('selectedFilesFiles');
+        count.textContent = `📎 ${selectedFiles.length} archivo(s) seleccionado(s)`;
+        
+        if (selectedFiles.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        selectedFiles.forEach((f, i) => {
+            const size = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1) + ' MB' :
+                        f.size > 1024 ? (f.size/1024).toFixed(1) + ' KB' : f.size + ' B';
+            html += `<div class="file-item-upload">
+                <span>📄 ${f.name} (${size})</span>
+                <span class="remove-file" onclick="removeFile(${i})">✕</span>
+            </div>`;
+        });
+        container.innerHTML = html;
+    }
+
+    function removeFile(index) {
+        selectedFiles.splice(index, 1);
+        updateFileListUI();
+    }
+
+    document.getElementById('uploadBtnFiles').addEventListener('click', () => {
+        if (selectedFiles.length === 0) {
+            alert('No hay archivos seleccionados');
+            return;
+        }
+        
+        const formData = new FormData();
+        for (const file of selectedFiles) {
+            formData.append('files', file);
+        }
+        
+        const progress = document.getElementById('progressFiles');
+        const bar = document.getElementById('progressBarFiles');
+        progress.style.display = 'block';
+        bar.style.width = '0%';
+        
+        fetch('/upload/{{ folder_name }}', {
+            method: 'POST',
+            body: formData
+        }).then(() => {
+            bar.style.width = '100%';
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        }).catch(() => {
+            alert('Error al subir archivos');
+            progress.style.display = 'none';
+        });
+    });
+
+    // ============================================================
+    // MODO CARPETA COMPLETA
+    // ============================================================
+    const dropZoneFolder = document.getElementById('dropZoneFolder');
+    const fileInputFolder = document.getElementById('fileInputFolder');
+
+    dropZoneFolder.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZoneFolder.classList.add('drag-over');
+    });
+    dropZoneFolder.addEventListener('dragleave', () => {
+        dropZoneFolder.classList.remove('drag-over');
+    });
+    dropZoneFolder.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZoneFolder.classList.remove('drag-over');
         const items = e.dataTransfer.items;
-        processItems(items);
+        processFolderItems(items);
     });
-    
-    dropZone.addEventListener('click', () => {
-        fileInput.click();
+    dropZoneFolder.addEventListener('click', () => {
+        fileInputFolder.click();
     });
-    
-    fileInput.addEventListener('change', (e) => {
-        processFileList(e.target.files);
+    fileInputFolder.addEventListener('change', (e) => {
+        processFolderFileList(e.target.files);
+        e.target.value = '';
     });
-    
-    function processItems(items) {
+
+    function processFolderItems(items) {
         const files = [];
         const processEntry = async (entry, path = '') => {
             if (entry.isFile) {
@@ -304,59 +531,164 @@
         }
         
         Promise.all(promises).then(() => {
-            selectedFiles = files;
-            selectedFilesDiv.innerHTML = `📎 ${selectedFiles.length} archivo(s) seleccionado(s)`;
+            selectedFolderFiles = files;
+            updateFolderUI();
         });
     }
-    
-    function processFileList(fileList) {
-        selectedFiles = Array.from(fileList);
-        selectedFilesDiv.innerHTML = `📎 ${selectedFiles.length} archivo(s) seleccionado(s)`;
+
+    function processFolderFileList(fileList) {
+        const files = Array.from(fileList);
+        // Preservar estructura de carpetas
+        files.forEach(f => {
+            f.relativePath = f.webkitRelativePath || f.name;
+        });
+        selectedFolderFiles = files;
+        updateFolderUI();
     }
-    
-    uploadBtn.addEventListener('click', () => {
-        if (selectedFiles.length === 0) {
-            alert('No hay archivos seleccionados');
+
+    function updateFolderUI() {
+        const container = document.getElementById('fileListFolder');
+        const count = document.getElementById('selectedFilesFolder');
+        count.textContent = `📁 ${selectedFolderFiles.length} archivo(s) en la carpeta`;
+        
+        if (selectedFolderFiles.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        const folders = new Set();
+        selectedFolderFiles.forEach(f => {
+            const path = f.relativePath || f.webkitRelativePath || f.name;
+            const parts = path.split('/');
+            if (parts.length > 1) {
+                folders.add(parts[0]);
+            }
+        });
+        
+        if (folders.size > 0) {
+            html += `<div style="color:#6f2da8; padding:5px;">📁 Carpetas: ${Array.from(folders).join(', ')}</div>`;
+        }
+        
+        const maxShow = 10;
+        const showFiles = selectedFolderFiles.slice(0, maxShow);
+        showFiles.forEach(f => {
+            const path = f.relativePath || f.webkitRelativePath || f.name;
+            html += `<div class="file-item-upload">📄 ${path}</div>`;
+        });
+        if (selectedFolderFiles.length > maxShow) {
+            html += `<div style="color:#666; padding:5px;">... y ${selectedFolderFiles.length - maxShow} más</div>`;
+        }
+        container.innerHTML = html;
+    }
+
+    document.getElementById('uploadBtnFolder').addEventListener('click', () => {
+        if (selectedFolderFiles.length === 0) {
+            alert('No hay carpeta seleccionada');
             return;
         }
         
         const formData = new FormData();
-        for (const file of selectedFiles) {
-            formData.append('files', file);
+        for (const file of selectedFolderFiles) {
+            // Usar el nombre con ruta relativa para preservar estructura
+            const path = file.relativePath || file.webkitRelativePath || file.name;
+            // Renombrar el archivo para incluir la ruta
+            const blob = new Blob([file], { type: file.type });
+            formData.append('files', blob, path);
         }
+        
+        const progress = document.getElementById('progressFolder');
+        const bar = document.getElementById('progressBarFolder');
+        progress.style.display = 'block';
+        bar.style.width = '0%';
         
         fetch('/upload/{{ folder_name }}', {
             method: 'POST',
             body: formData
         }).then(() => {
-            window.location.reload();
+            bar.style.width = '100%';
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        }).catch(() => {
+            alert('Error al subir la carpeta');
+            progress.style.display = 'none';
         });
     });
-    
-    uploadZipBtn.addEventListener('click', () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.webkitdirectory = true;
-        input.directory = true;
-        input.onchange = (e) => {
-            const files = Array.from(e.target.files);
-            if (files.length === 0) return;
-            
-            const formData = new FormData();
-            formData.append('folder_zip', files[0]);
-            
-            fetch('/upload/{{ folder_name }}', {
-                method: 'POST',
-                body: formData
-            }).then(() => {
-                window.location.reload();
-            });
-        };
-        input.click();
+
+    // ============================================================
+    // MODO SUBIR ZIP
+    // ============================================================
+    const dropZoneZip = document.getElementById('dropZoneZip');
+    const fileInputZip = document.getElementById('fileInputZip');
+
+    dropZoneZip.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZoneZip.classList.add('drag-over');
     });
-    
-    createSubfolderBtn.addEventListener('click', () => {
-        const name = subfolderNameInput.value.trim();
+    dropZoneZip.addEventListener('dragleave', () => {
+        dropZoneZip.classList.remove('drag-over');
+    });
+    dropZoneZip.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZoneZip.classList.remove('drag-over');
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0 && files[0].name.endsWith('.zip')) {
+            handleZipFile(files[0]);
+        } else {
+            alert('Solo se aceptan archivos ZIP');
+        }
+    });
+    dropZoneZip.addEventListener('click', () => {
+        fileInputZip.click();
+    });
+    fileInputZip.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleZipFile(e.target.files[0]);
+        }
+        e.target.value = '';
+    });
+
+    let selectedZipFile = null;
+
+    function handleZipFile(file) {
+        selectedZipFile = file;
+        document.getElementById('selectedFilesZip').textContent = `📦 ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+    }
+
+    document.getElementById('uploadBtnZip').addEventListener('click', () => {
+        if (!selectedZipFile) {
+            alert('No hay archivo ZIP seleccionado');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('folder_zip', selectedZipFile);
+        
+        const progress = document.getElementById('progressZip');
+        const bar = document.getElementById('progressBarZip');
+        progress.style.display = 'block';
+        bar.style.width = '0%';
+        
+        fetch('/upload/{{ folder_name }}', {
+            method: 'POST',
+            body: formData
+        }).then(() => {
+            bar.style.width = '100%';
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        }).catch(() => {
+            alert('Error al subir el ZIP');
+            progress.style.display = 'none';
+        });
+    });
+
+    // ============================================================
+    // CREAR SUBCARPETA
+    // ============================================================
+    document.getElementById('createSubfolderBtn').addEventListener('click', () => {
+        const name = document.getElementById('subfolderName').value.trim();
         if (!name) {
             alert('Escribe un nombre para la subcarpeta');
             return;
