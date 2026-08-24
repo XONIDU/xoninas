@@ -440,7 +440,6 @@ def get_linux_printers():
                             vendor_id = match.group(3)
                             description = match.group(4).strip()
                             if 'printer' in description.lower():
-                                # Intentar obtener el nombre de la impresora
                                 name_match = re.search(r'([A-Za-z0-9\-]+)\s+([A-Za-z0-9\-]+)', description)
                                 if name_match:
                                     name = f"{name_match.group(1)} {name_match.group(2)}"
@@ -452,8 +451,8 @@ def get_linux_printers():
                                         'default': False,
                                         'type': 'lsusb'
                                     })
-    except Exception as e:
-        print(f"  lsusb falló: {e}")
+        except Exception as e:
+            print(f"  lsusb falló: {e}")
     
     # Método 4: Impresoras por avahi-browse (detección de red)
     if shutil.which('avahi-browse'):
