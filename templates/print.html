@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XONINAS · Impresión Remota</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            font-family: 'Segoe UI', system-ui;
+            color: #0f0;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #6f2da8;
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        h1 { color: #6f2da8; }
+        .back {
+            background: #6f2da8;
+            padding: 0.5rem 1rem;
+            border-radius: 40px;
+            text-decoration: none;
+            color: white;
+        }
+        .card {
+            background: #0a0a0a;
+            border: 1px solid #6f2da8;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            color: #00ff88;
+            margin-bottom: 15px;
+            border-left: 4px solid #6f2da8;
+            padding-left: 15px;
+        }
+        .printer-select {
+            background: #111;
+            border: 1px solid #6f2da8;
+            color: #0f0;
+            padding: 10px 15px;
+            border-radius: 40px;
+            width: 100%;
+            max-width: 400px;
+            font-size: 1rem;
+            margin: 10px 0;
+        }
+        .printer-select:focus {
+            outline: none;
+            border-color: #00ff88;
+        }
+        .btn-print {
+            background: #00aa55;
+            color: #000;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .btn-print:hover {
+            background: #00ff88;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        .btn-secondary {
+            background: #6f2da8;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-secondary:hover {
+            background: #8a4bcb;
+            transform: scale(1.02);
+        }
+        .file-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #222;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .file-item:hover {
+            background: rgba(111,45,168,0.1);
+        }
+        .file-item .file-name {
+            color: #0f0;
+        }
+        .file-item .file-size {
+            color: #666;
+            font-size: 0.8rem;
+        }
+        .text-area {
+            width: 100%;
+            background: #111;
+            border: 1px solid #6f2da8;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 12px;
+            font-family: monospace;
+            min-height: 100px;
+            resize: vertical;
+        }
+        .text-area:focus {
+            outline: none;
+            border-color: #00ff88;
+        }
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .printers-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .printer-chip {
+            background: #111;
+            border: 1px solid #2a2a2a;
+            border-radius: 30px;
+            padding: 6px 15px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 0.9rem;
+        }
+        .printer-chip:hover {
+            border-color: #6f2da8;
+        }
+        .printer-chip.active {
+            border-color: #00ff88;
+            background: rgba(0, 255, 136, 0.05);
+        }
+        .status-msg {
+            margin-top: 15px;
+            padding: 10px 15px;
+            border-radius: 10px;
+        }
+        .status-msg.success {
+            background: rgba(0, 170, 85, 0.2);
+            border: 1px solid #00aa55;
+            color: #00ff88;
+        }
+        .status-msg.error {
+            background: rgba(255, 68, 68, 0.2);
+            border: 1px solid #ff4444;
+            color: #ff6666;
+        }
+        .status-msg.info {
+            background: rgba(111, 45, 168, 0.2);
+            border: 1px solid #6f2da8;
+            color: #c084fc;
+        }
+        .upload-form {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .upload-form input[type="file"] {
+            flex: 1;
+            background: #111;
+            border: 1px solid #6f2da8;
+            border-radius: 40px;
+            padding: 10px;
+            color: #0f0;
+            min-width: 200px;
+        }
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            .file-item { flex-direction: column; text-align: center; }
+            .upload-form { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🖨️ Impresión Remota</h1>
+        <div>
+            <a href="/print/refresh" class="btn-secondary" style="text-decoration:none; margin-right:10px;">↻ Actualizar impresoras</a>
+            <a href="/" class="back">← Volver al NAS</a>
+        </div>
+    </header>
+
+    <!-- SELECCIÓN DE IMPRESORA -->
+    <div class="card">
+        <h2>🖨️ Seleccionar impresora</h2>
+        <select id="printerSelect" class="printer-select">
+            <option value="">-- Selecciona una impresora --</option>
+            {% for p in printers %}
+            <option value="{{ p.name }}" {% if p.default %}selected{% endif %}>
+                {{ p.name }}{% if p.default %} (por defecto){% endif %}
+            </option>
+            {% endfor %}
+        </select>
+        {% if not printers %}
+        <p style="color:#666;">No se detectaron impresoras. Usa "Actualizar impresoras" para buscar.</p>
+        {% endif %}
+        <div class="printers-grid">
+            {% for p in printers %}
+            <div class="printer-chip {% if p.default %}active{% endif %}" onclick="selectPrinter('{{ p.name }}')">
+                {{ p.name }}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- IMPRIMIR ARCHIVO DEL NAS -->
+    <div class="card">
+        <h2>📄 Imprimir archivo del NAS</h2>
+        <p style="color:#666; margin-bottom:10px;">Selecciona un archivo de la carpeta actual para imprimirlo</p>
+        <div id="fileList" class="file-list">
+            <div style="text-align:center; padding:20px; color:#666;">Cargando archivos...</div>
+        </div>
+    </div>
+
+    <!-- IMPRIMIR TEXTO -->
+    <div class="card">
+        <h2>✏️ Imprimir texto</h2>
+        <form method="POST" action="/print/text">
+            <input type="hidden" name="printer_name" id="printTextPrinter">
+            <textarea name="text" class="text-area" placeholder="Escribe el texto que quieres imprimir..."></textarea>
+            <div class="btn-row">
+                <button type="submit" class="btn-print">🖨️ Imprimir texto</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- SUBIR E IMPRIMIR -->
+    <div class="card">
+        <h2>📤 Subir e imprimir</h2>
+        <p style="color:#666; margin-bottom:10px;">Sube un archivo desde tu dispositivo y envíalo directamente a la impresora</p>
+        <form method="POST" action="/print/upload" enctype="multipart/form-data" class="upload-form">
+            <input type="hidden" name="printer_name" id="uploadPrinter">
+            <input type="file" name="file" accept=".pdf,.txt,.doc,.docx,.jpg,.jpeg,.png,.gif,.bmp" required>
+            <button type="submit" class="btn-print">⬆ Subir e imprimir</button>
+        </form>
+    </div>
+
+    <!-- STATUS -->
+    <div id="statusContainer"></div>
+</div>
+
+<script>
+    // Obtener carpeta actual desde la URL o sesión
+    let currentFolder = new URLSearchParams(window.location.search).get('folder') || '';
+
+    function selectPrinter(name) {
+        document.getElementById('printerSelect').value = name;
+        document.querySelectorAll('.printer-chip').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.printer-chip').forEach(c => {
+            if (c.textContent.trim() === name) c.classList.add('active');
+        });
+        // Actualizar campos ocultos
+        document.getElementById('printTextPrinter').value = name;
+        document.getElementById('uploadPrinter').value = name;
+    }
+
+    // Cargar archivos de la carpeta
+    function loadFiles() {
+        const container = document.getElementById('fileList');
+        if (!currentFolder) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:20px; color:#666;">
+                    No hay carpeta seleccionada.<br>
+                    Ve a una carpeta desde el NAS y usa el botón "🖨️ Imprimir".
+                </div>
+            `;
+            return;
+        }
+
+        fetch(`/folder/${currentFolder}`)
+            .then(res => res.text())
+            .then(html => {
+                // Extraer lista de archivos de la página (método simple)
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const rows = doc.querySelectorAll('table tbody tr:not(.folder-row)');
+                let files = [];
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length >= 2) {
+                        const name = cells[1]?.textContent?.trim() || '';
+                        const size = cells[2]?.textContent?.trim() || '';
+                        const ext = name.split('.').pop().toLowerCase();
+                        const printable = ['pdf', 'txt', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(ext);
+                        if (name && !name.includes('/')) {
+                            files.push({ name, size, printable });
+                        }
+                    }
+                });
+
+                if (files.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">📭 No hay archivos en esta carpeta</div>';
+                    return;
+                }
+
+                let html = '';
+                files.forEach(f => {
+                    html += `
+                        <div class="file-item">
+                            <div>
+                                <span class="file-name">${f.name}</span>
+                                <span class="file-size"> (${f.size})</span>
+                            </div>
+                            <div>
+                                ${f.printable 
+                                    ? `<form method="POST" action="/print/file" style="display:inline;">
+                                        <input type="hidden" name="folder_name" value="${currentFolder}">
+                                        <input type="hidden" name="filename" value="${f.name}">
+                                        <input type="hidden" name="printer_name" id="filePrinter_${f.name}">
+                                        <button type="submit" class="btn-print" style="padding:5px 15px; font-size:0.8rem;" onclick="document.getElementById('filePrinter_${f.name}').value=document.getElementById('printerSelect').value;">🖨️ Imprimir</button>
+                                    </form>`
+                                    : '<span style="color:#666; font-size:0.8rem;">No imprimible</span>'
+                                }
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            })
+            .catch(() => {
+                container.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">Error cargando archivos</div>';
+            });
+    }
+
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', function() {
+        // Seleccionar primera impresora por defecto
+        const chips = document.querySelectorAll('.printer-chip');
+        if (chips.length > 0) {
+            chips[0].classList.add('active');
+            const firstPrinter = chips[0].textContent.trim();
+            document.getElementById('printerSelect').value = firstPrinter;
+            document.getElementById('printTextPrinter').value = firstPrinter;
+            document.getElementById('uploadPrinter').value = firstPrinter;
+        }
+
+        // Cargar archivos
+        loadFiles();
+
+        // Sincronizar selección de impresora
+        document.getElementById('printerSelect').addEventListener('change', function() {
+            const val = this.value;
+            document.querySelectorAll('.printer-chip').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.printer-chip').forEach(c => {
+                if (c.textContent.trim() === val) c.classList.add('active');
+            });
+            document.getElementById('printTextPrinter').value = val;
+            document.getElementById('uploadPrinter').value = val;
+        });
+    });
+</script>
+
+</body>
+</html>

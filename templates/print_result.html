@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultado de impresión · XONINAS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            font-family: 'Segoe UI', system-ui;
+            color: #0f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .card {
+            background: #0a0a0a;
+            border: 1px solid #6f2da8;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        .icon { font-size: 4rem; margin-bottom: 1rem; }
+        h1 { color: #6f2da8; margin-bottom: 1rem; }
+        .success { color: #00ff88; }
+        .error { color: #ff6666; }
+        .message {
+            background: #111;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            color: #ccc;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .btn {
+            display: inline-block;
+            background: #6f2da8;
+            color: white;
+            padding: 10px 30px;
+            border-radius: 40px;
+            text-decoration: none;
+            transition: 0.2s;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: #8a4bcb;
+            transform: scale(1.02);
+        }
+        .btn-print {
+            background: #00aa55;
+            color: #000;
+            font-weight: bold;
+        }
+        .btn-print:hover {
+            background: #00ff88;
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    {% if success %}
+        <div class="icon">✅</div>
+        <h1 class="success">¡Impresión enviada!</h1>
+        <div class="message">{{ message }}</div>
+        <p style="color:#666; margin-bottom: 20px;">El archivo se ha enviado correctamente a la impresora.</p>
+    {% else %}
+        <div class="icon">❌</div>
+        <h1 class="error">Error al imprimir</h1>
+        <div class="message">{{ error }}</div>
+        <p style="color:#666; margin-bottom: 20px;">Verifica que la impresora esté conectada y disponible.</p>
+    {% endif %}
+    <div>
+        <a href="/print" class="btn btn-print">🖨️ Volver a impresión</a>
+        <a href="/" class="btn">📁 Volver al NAS</a>
+    </div>
+</div>
+</body>
+</html>
