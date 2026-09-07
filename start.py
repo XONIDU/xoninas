@@ -6,6 +6,7 @@ XONINAS 2026 - Lanzador Ultrarrobusto
 NAS Local con Carpetas Protegidas
 Incluye gestion automatica de STORAGE_FOLDER, pip, dependencias y Cloudflare Tunnel
 Captura la URL del tunel y la pasa a xoninas.py
+Soporte para conversión a blanco y negro (Pillow, PyMuPDF, python-docx)
 
 Desarrollado por: Darian Alberto Camacho Salas
 Organizacion: XONIDU
@@ -197,7 +198,7 @@ def ensure_storage_folder():
     return storage_path
 
 # ============================================================================
-# Dependencias
+# Dependencias (ACTUALIZADO con soporte B/N)
 # ============================================================================
 def check_python():
     try:
@@ -245,37 +246,90 @@ def check_python_module(module_name):
 
 def check_dependencies():
     print(f"\n{Colors.BOLD}Verificando dependencias...{Colors.END}")
-    dependencies = ['flask', 'werkzeug', 'waitress', 'requests', 'qrcode']
+    # Dependencias actualizadas con soporte B/N
+    dependencies = [
+        ('flask', 'flask'),
+        ('werkzeug', 'werkzeug'),
+        ('waitress', 'waitress'),
+        ('requests', 'requests'),
+        ('qrcode', 'qrcode'),
+        ('PIL', 'Pillow'),       # Para imágenes
+        ('fitz', 'PyMuPDF'),     # Para PDF y Word (recomendado)
+        ('docx', 'python-docx'), # Para Word (fallback)
+    ]
     missing = []
-    for dep in dependencies:
-        if check_python_module(dep):
-            print(f"{Colors.GREEN}  {dep} OK{Colors.END}")
+    for module, package in dependencies:
+        # Para PIL, el módulo se llama 'PIL' pero el paquete es 'Pillow'
+        # Para fitz, el módulo se llama 'fitz' pero el paquete es 'PyMuPDF'
+        if check_python_module(module):
+            print(f"{Colors.GREEN}  {package} OK{Colors.END}")
         else:
-            print(f"{Colors.YELLOW}  {dep} (faltante){Colors.END}")
-            missing.append(dep)
+            print(f"{Colors.YELLOW}  {package} (faltante){Colors.END}")
+            missing.append(package)
     return missing
+
+def install_with_multiple_strategies(packages):
+    """Intenta instalar paquetes con múltiples estrategias"""
+    sistema = get_system()
+    distro = get_linux_distro()
+    
+    estrategias = []
+    
+    # Estrategia 1: python -m pip
+    estrategias.append([sys.executable, '-m', 'pip', 'install'])
+    
+    # Estrategia 2: con --user
+    if sistema != 'windows':
+        estrategias.append([sys.executable, '-m', 'pip', 'install', '--user'])
+    
+    # Estrategia 3: con --break-system-packages (Arch, Fedora)
+    if sistema == 'linux' and distro in ['arch-based', 'fedora']:
+        estrategias.append([sys.executable, '-m', 'pip', 'install', '--break-system-packages'])
+        estrategias.append([sys.executable, '-m', 'pip', 'install', '--user', '--break-system-packages'])
+    
+    # Estrategia 4: pip3 directamente
+    if shutil.which('pip3'):
+        estrategias.append(['pip3', 'install'])
+        if sistema == 'linux' and distro in ['arch-based', 'fedora']:
+            estrategias.append(['pip3', 'install', '--break-system-packages'])
+            estrategias.append(['pip3', 'install', '--user'])
+    
+    # Estrategia 5: pip directamente
+    if shutil.which('pip'):
+        estrategias.append(['pip', 'install'])
+        if sistema == 'linux' and distro in ['arch-based', 'fedora']:
+            estrategias.append(['pip', 'install', '--break-system-packages'])
+            estrategias.append(['pip', 'install', '--user'])
+    
+    for paquete in packages:
+        print(f"\n  Instalando {paquete}...")
+        exito = False
+        for idx, strategy in enumerate(estrategias, 1):
+            cmd = strategy + [paquete]
+            print(f"    Intento {idx}: {' '.join(cmd)}")
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                if result.returncode == 0:
+                    print(f"{Colors.GREEN}    ✓ Instalado{Colors.END}")
+                    exito = True
+                    break
+                else:
+                    error_msg = result.stderr[:100] if result.stderr else "Error desconocido"
+                    print(f"    ✗ Falló: {error_msg}")
+            except subprocess.TimeoutExpired:
+                print(f"    ✗ Timeout")
+            except Exception as e:
+                print(f"    ✗ Error: {str(e)[:100]}")
+        if not exito:
+            print(f"{Colors.RED}  No se pudo instalar {paquete}{Colors.END}")
+            return False
+    return True
 
 def install_dependencies(missing):
     if not missing:
         return True
-    print(f"\n{Colors.BOLD}Instalando dependencias...{Colors.END}")
-    flags = get_install_flags()
-    success = True
-    for dep in missing:
-        print(f"  Instalando {dep}...")
-        try:
-            cmd = get_pip_command() + ['install', dep] + flags
-            subprocess.run(cmd, check=True, capture_output=True)
-            print(f"{Colors.GREEN}    {dep} instalado{Colors.END}")
-        except:
-            try:
-                cmd = get_pip_command() + ['install', dep]
-                subprocess.run(cmd, check=True)
-                print(f"{Colors.GREEN}    {dep} instalado{Colors.END}")
-            except:
-                print(f"{Colors.RED}    Error instalando {dep}{Colors.END}")
-                success = False
-    return success
+    print(f"\n{Colors.BOLD}Instalando dependencias faltantes...{Colors.END}")
+    return install_with_multiple_strategies(missing)
 
 def check_cloudflared():
     return shutil.which('cloudflared') is not None
@@ -369,7 +423,6 @@ def run_server_directly(xoninas_path, storage_path):
     env = os.environ.copy()
     env['STORAGE_FOLDER'] = storage_path
     env['XONINAS_CONFIG_DIR'] = os.path.dirname(xoninas_path)
-    # Si hay URL del tunel, pasarla
     if 'TUNNEL_URL' in os.environ:
         env['TUNNEL_URL'] = os.environ['TUNNEL_URL']
     
@@ -428,16 +481,19 @@ def main():
     else:
         print(f"{Colors.GREEN}Pip disponible{Colors.END}")
     
-    # Dependencias
+    # Dependencias (AHORA INCLUYE Pillow, PyMuPDF, python-docx)
     missing = check_dependencies()
     if missing:
         print(f"\n{Colors.YELLOW}Faltan {len(missing)} dependencias.{Colors.END}")
+        print(f"  {Colors.CYAN}Estas librerías son necesarias para la conversión a blanco y negro{Colors.END}")
         resp = input("Instalar automaticamente? (s/n): ")
         if resp.lower() == 's':
             if not install_dependencies(missing):
                 print(f"{Colors.YELLOW}Continuando a pesar de errores...{Colors.END}")
+                print(f"{Colors.YELLOW}  La conversión a blanco y negro puede no funcionar correctamente.{Colors.END}")
         else:
             print(f"{Colors.YELLOW}No se instalaran. El programa podria fallar.{Colors.END}")
+            print(f"{Colors.YELLOW}  La conversión a blanco y negro NO estará disponible.{Colors.END}")
     
     # STORAGE_FOLDER
     storage_path = ensure_storage_folder()
