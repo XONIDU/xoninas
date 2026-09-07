@@ -12,10 +12,7 @@
             color: #0f0;
             padding: 2rem;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+        .container { max-width: 1200px; margin: 0 auto; }
         header {
             display: flex;
             justify-content: space-between;
@@ -85,37 +82,6 @@
             transition: 0.2s;
         }
         .btn-secondary:hover { background: #8a4bcb; }
-        .file-list { max-height: 300px; overflow-y: auto; }
-        .file-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            border-bottom: 1px solid #222;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        .file-item:hover { background: rgba(111,45,168,0.1); }
-        .file-item .file-name { color: #0f0; }
-        .file-item .file-size { color: #666; font-size: 0.8rem; }
-        .text-area {
-            width: 100%;
-            background: #111;
-            border: 1px solid #6f2da8;
-            color: #0f0;
-            padding: 15px;
-            border-radius: 12px;
-            font-family: monospace;
-            min-height: 100px;
-            resize: vertical;
-        }
-        .text-area:focus { outline: none; border-color: #00ff88; }
-        .btn-row {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
         .printers-grid {
             display: flex;
             flex-wrap: wrap;
@@ -157,12 +123,102 @@
             padding: 10px;
             max-width: 150px;
         }
-        .qr-section .qr-text {
-            color: #888;
-            font-size: 0.8rem;
+        .file-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 10px;
         }
-        .qr-section .qr-text strong {
-            color: #00ff88;
+        .file-item {
+            background: #111;
+            border: 1px solid #2a2a2a;
+            border-radius: 12px;
+            padding: 12px;
+            transition: 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .file-item:hover {
+            border-color: #6f2da8;
+        }
+        .file-item .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .file-item .file-name {
+            color: #0f0;
+            font-size: 0.85rem;
+            word-break: break-all;
+            flex: 1;
+        }
+        .file-item .file-folder {
+            color: #6f2da8;
+            font-size: 0.7rem;
+        }
+        .file-item .file-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .file-item .file-actions form {
+            display: inline;
+        }
+        .file-item .btn-print-sm {
+            background: #00aa55;
+            color: #000;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.75rem;
+            transition: 0.2s;
+        }
+        .file-item .btn-print-sm:hover {
+            background: #00ff88;
+        }
+        .file-item .btn-bn {
+            background: #6f2da8;
+            color: #fff;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            transition: 0.2s;
+        }
+        .file-item .btn-bn:hover {
+            background: #8a4bcb;
+        }
+        .file-item .file-size {
+            color: #666;
+            font-size: 0.7rem;
+        }
+        .file-item .not-printable {
+            color: #666;
+            font-size: 0.7rem;
+        }
+        .text-area {
+            width: 100%;
+            background: #111;
+            border: 1px solid #6f2da8;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 12px;
+            font-family: monospace;
+            min-height: 100px;
+            resize: vertical;
+        }
+        .text-area:focus { outline: none; border-color: #00ff88; }
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
         }
         .upload-form {
             display: flex;
@@ -183,26 +239,40 @@
             margin-top: 15px;
             padding: 10px 15px;
             border-radius: 10px;
+            display: none;
         }
         .status-msg.success {
+            display: block;
             background: rgba(0, 170, 85, 0.2);
             border: 1px solid #00aa55;
             color: #00ff88;
         }
         .status-msg.error {
+            display: block;
             background: rgba(255, 68, 68, 0.2);
             border: 1px solid #ff4444;
             color: #ff6666;
         }
         .status-msg.info {
+            display: block;
             background: rgba(111, 45, 168, 0.2);
             border: 1px solid #6f2da8;
             color: #c084fc;
         }
+        .search-box {
+            width: 100%;
+            padding: 8px 15px;
+            background: #111;
+            border: 1px solid #6f2da8;
+            border-radius: 40px;
+            color: #0f0;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+        .search-box:focus { outline: none; border-color: #00ff88; }
         @media (max-width: 768px) {
             body { padding: 1rem; }
-            .file-item { flex-direction: column; text-align: center; }
-            .upload-form { flex-direction: column; }
+            .file-grid { grid-template-columns: 1fr; }
             .qr-section { flex-direction: column; text-align: center; }
         }
     </style>
@@ -212,69 +282,97 @@
     <header>
         <h1>🖨️ Impresión Remota</h1>
         <div>
-            <a href="/print/refresh" class="btn-secondary" style="text-decoration:none; margin-right:10px;">↻ Actualizar impresoras</a>
+            <a href="/print/refresh" class="btn-secondary" style="text-decoration:none; margin-right:10px;">↻ Actualizar</a>
             <a href="/" class="back">← Volver al NAS</a>
         </div>
     </header>
 
-    <!-- CÓDIGO QR -->
+    <!-- QR -->
     <div class="card">
         <h2>📱 Acceso rápido</h2>
         <div class="qr-section">
             {% if qr_image %}
-                <img src="{{ qr_image }}" alt="QR Code para impresión">
+                <img src="{{ qr_image }}" alt="QR Code">
                 <div class="qr-text">
                     <strong>Escanea este QR</strong> desde tu móvil para<br>
-                    acceder directamente a la página de impresión.
+                    acceder a la página de impresión.
                     <br><br>
                     <span style="color:#666; font-size:0.7rem;">URL: {{ qr_url }}</span>
                 </div>
             {% else %}
-                <div style="color:#666;">
-                    Instala 'qrcode' para ver el QR:<br>
-                    <code style="background:#111; padding:4px 8px; border-radius:4px;">pip install qrcode[pil]</code>
-                </div>
+                <div style="color:#666;">Instala qrcode: <code>pip install qrcode[pil]</code></div>
             {% endif %}
         </div>
     </div>
 
-    <!-- SELECCIÓN DE IMPRESORA -->
+    <!-- Impresora -->
     <div class="card">
         <h2>🖨️ Seleccionar impresora</h2>
-        <select id="printerSelect" class="printer-select" name="printer_name">
+        <select id="printerSelect" class="printer-select">
             <option value="">-- Selecciona una impresora --</option>
             {% for p in printers %}
             <option value="{{ p.name }}" {% if p.default %}selected{% endif %}>
-                {{ p.name }}{% if p.default %} (por defecto){% endif %}{% if p.type %} [{{ p.type }}]{% endif %}
+                {{ p.name }}{% if p.default %} (por defecto){% endif %}
             </option>
             {% endfor %}
         </select>
-        {% if not printers %}
-        <p style="color:#666;">No se detectaron impresoras. Usa "Actualizar impresoras" para buscar.</p>
-        {% endif %}
         <div class="printers-grid">
             {% for p in printers %}
-            <div class="printer-chip {% if p.default %}active{% endif %}" data-printer="{{ p.name }}" onclick="selectPrinter('{{ p.name }}')">
+            <div class="printer-chip {% if p.default %}active{% endif %}" onclick="selectPrinter('{{ p.name }}')">
                 {{ p.name }}
-                {% if p.default %}<span class="default-badge">por defecto</span>{% endif %}
             </div>
             {% endfor %}
         </div>
     </div>
 
-    <!-- IMPRIMIR ARCHIVO DEL NAS -->
+    <!-- Archivos del NAS -->
     <div class="card">
-        <h2>📄 Imprimir archivo del NAS</h2>
-        <p style="color:#666; margin-bottom:10px;">Selecciona un archivo de la carpeta actual para imprimirlo</p>
-        <div id="fileList" class="file-list">
-            <div style="text-align:center; padding:20px; color:#666;">Cargando archivos...</div>
+        <h2>📁 Archivos del NAS</h2>
+        <input type="text" class="search-box" id="searchFiles" placeholder="🔍 Buscar archivo..." oninput="filterFiles()">
+        <div class="file-grid" id="fileGrid">
+            {% for file in files %}
+            <div class="file-item" data-name="{{ file.name|lower }}">
+                <div class="file-info">
+                    <span>{{ file.icon if file.icon else '📄' }}</span>
+                    <span class="file-name">{{ file.name }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+                    <span class="file-folder">📂 {{ file.folder }}</span>
+                    <span class="file-size">{{ file.size_formatted }}</span>
+                </div>
+                <div class="file-actions">
+                    {% if file.printable %}
+                        <form method="POST" action="/print/file" style="display:inline;">
+                            <input type="hidden" name="folder_name" value="{{ file.folder }}">
+                            <input type="hidden" name="filename" value="{{ file.name }}">
+                            <input type="hidden" name="printer_name" class="printer-input" value="">
+                            <input type="hidden" name="grayscale" value="false">
+                            <button type="submit" class="btn-print-sm">🖨️ Color</button>
+                        </form>
+                        <form method="POST" action="/print/file" style="display:inline;">
+                            <input type="hidden" name="folder_name" value="{{ file.folder }}">
+                            <input type="hidden" name="filename" value="{{ file.name }}">
+                            <input type="hidden" name="printer_name" class="printer-input" value="">
+                            <input type="hidden" name="grayscale" value="true">
+                            <button type="submit" class="btn-bn">⚫ B/N</button>
+                        </form>
+                    {% else %}
+                        <span class="not-printable">No imprimible</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div style="color:#666; grid-column:1/-1; text-align:center; padding:20px;">
+                No hay archivos en el NAS. Sube algunos desde las carpetas.
+            </div>
+            {% endfor %}
         </div>
     </div>
 
-    <!-- IMPRIMIR TEXTO -->
+    <!-- Imprimir texto -->
     <div class="card">
         <h2>✏️ Imprimir texto</h2>
-        <form method="POST" action="/print/text" id="printTextForm">
+        <form method="POST" action="/print/text">
             <input type="hidden" name="printer_name" id="printTextPrinter">
             <textarea name="text" class="text-area" placeholder="Escribe el texto que quieres imprimir..."></textarea>
             <div class="btn-row">
@@ -283,203 +381,91 @@
         </form>
     </div>
 
-    <!-- SUBIR E IMPRIMIR -->
+    <!-- Subir e imprimir -->
     <div class="card">
         <h2>📤 Subir e imprimir</h2>
-        <p style="color:#666; margin-bottom:10px;">Sube un archivo desde tu dispositivo y envíalo directamente a la impresora</p>
-        <form method="POST" action="/print/upload" enctype="multipart/form-data" class="upload-form" id="uploadForm">
+        <form method="POST" action="/print/upload" enctype="multipart/form-data" class="upload-form">
             <input type="hidden" name="printer_name" id="uploadPrinter">
+            <input type="hidden" name="grayscale" id="uploadGrayscale" value="false">
             <input type="file" name="file" accept=".pdf,.txt,.doc,.docx,.jpg,.jpeg,.png,.gif,.bmp" required>
             <button type="submit" class="btn-print">⬆ Subir e imprimir</button>
+            <button type="button" class="btn-bn" onclick="toggleUploadGrayscale()">⚫ B/N</button>
         </form>
     </div>
 
-    <!-- STATUS -->
+    <!-- Status -->
     <div id="statusContainer"></div>
 </div>
 
 <script>
-    // Obtener carpeta actual desde la URL o sesión
-    let currentFolder = new URLSearchParams(window.location.search).get('folder') || '';
-
     // ============================================================
-    // FUNCIÓN PRINCIPAL PARA SELECCIONAR IMPRESORA
+    // FUNCIONES DE IMPRESORA
     // ============================================================
     function selectPrinter(name) {
         if (!name) return;
-        
-        // Actualizar el select
         document.getElementById('printerSelect').value = name;
-        
-        // Actualizar chips
         document.querySelectorAll('.printer-chip').forEach(c => c.classList.remove('active'));
         document.querySelectorAll('.printer-chip').forEach(c => {
-            if (c.getAttribute('data-printer') === name) c.classList.add('active');
+            if (c.textContent.trim() === name) c.classList.add('active');
         });
-        
-        // ACTUALIZAR TODOS LOS CAMPOS OCULTOS
-        document.getElementById('printTextPrinter').value = name;
-        document.getElementById('uploadPrinter').value = name;
-        
-        // Actualizar también cualquier formulario de impresión de archivos existente
-        document.querySelectorAll('input[name="printer_name"]').forEach(input => {
-            if (input.id !== 'printTextPrinter' && input.id !== 'uploadPrinter') {
-                input.value = name;
-            }
-        });
-        
-        console.log('✅ Impresora seleccionada:', name);
+        updateAllPrinterInputs();
     }
 
-    // ============================================================
-    // INICIALIZAR LA PRIMERA IMPRESORA
-    // ============================================================
-    function initPrinter() {
-        // Buscar la impresora por defecto (activa)
-        let activeChip = document.querySelector('.printer-chip.active');
-        let selectedPrinter = null;
-        
-        if (activeChip) {
-            selectedPrinter = activeChip.getAttribute('data-printer');
-        } else {
-            // Si no hay activa, usar la primera
-            let firstChip = document.querySelector('.printer-chip');
-            if (firstChip) {
-                selectedPrinter = firstChip.getAttribute('data-printer');
-                firstChip.classList.add('active');
-            }
-        }
-        
-        if (selectedPrinter) {
-            selectPrinter(selectedPrinter);
-        }
-    }
-
-    // ============================================================
-    // EVENTO: Cambio manual del select
-    // ============================================================
-    document.getElementById('printerSelect').addEventListener('change', function() {
-        const val = this.value;
-        if (val) {
-            selectPrinter(val);
-        }
-    });
-
-    // ============================================================
-    // CARGAR ARCHIVOS DE LA CARPETA
-    // ============================================================
-    function loadFiles() {
-        const container = document.getElementById('fileList');
-        if (!currentFolder) {
-            container.innerHTML = `
-                <div style="text-align:center; padding:20px; color:#666;">
-                    No hay carpeta seleccionada.<br>
-                    Ve a una carpeta desde el NAS y usa el botón "🖨️ Imprimir".
-                </div>
-            `;
-            return;
-        }
-
-        fetch(`/folder/${currentFolder}`)
-            .then(res => res.text())
-            .then(html => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const rows = doc.querySelectorAll('table tbody tr:not(.folder-row)');
-                let files = [];
-                rows.forEach(row => {
-                    const cells = row.querySelectorAll('td');
-                    if (cells.length >= 2) {
-                        const name = cells[1]?.textContent?.trim() || '';
-                        const size = cells[2]?.textContent?.trim() || '';
-                        const ext = name.split('.').pop().toLowerCase();
-                        const printable = ['pdf', 'txt', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(ext);
-                        if (name && !name.includes('/')) {
-                            files.push({ name, size, printable });
-                        }
-                    }
-                });
-
-                if (files.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">📭 No hay archivos en esta carpeta</div>';
-                    return;
-                }
-
-                let html = '';
-                files.forEach(f => {
-                    html += `
-                        <div class="file-item">
-                            <div>
-                                <span class="file-name">${f.name}</span>
-                                <span class="file-size"> (${f.size})</span>
-                            </div>
-                            <div>
-                                ${f.printable 
-                                    ? `<form method="POST" action="/print/file" style="display:inline;" onsubmit="return validatePrinter()">
-                                        <input type="hidden" name="folder_name" value="${currentFolder}">
-                                        <input type="hidden" name="filename" value="${f.name}">
-                                        <input type="hidden" name="printer_name" class="file-printer-input" value="">
-                                        <button type="submit" class="btn-print" style="padding:5px 15px; font-size:0.8rem;">🖨️ Imprimir</button>
-                                    </form>`
-                                    : '<span style="color:#666; font-size:0.8rem;">No imprimible</span>'
-                                }
-                            </div>
-                        </div>
-                    `;
-                });
-                container.innerHTML = html;
-                
-                // Asignar la impresora seleccionada a todos los formularios de archivos
-                const currentPrinter = document.getElementById('printerSelect').value;
-                document.querySelectorAll('.file-printer-input').forEach(input => {
-                    input.value = currentPrinter;
-                });
-            })
-            .catch(() => {
-                container.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">Error cargando archivos</div>';
-            });
-    }
-
-    // ============================================================
-    // VALIDACIÓN: Verificar que hay una impresora seleccionada
-    // ============================================================
-    function validatePrinter() {
-        const printer = document.getElementById('printerSelect').value;
-        if (!printer) {
-            alert('⚠️ Por favor, selecciona una impresora primero.');
-            return false;
-        }
-        return true;
-    }
-
-    // ============================================================
-    // ACTUALIZAR IMPRESORA EN FORMULARIOS DINÁMICOS
-    // ============================================================
     function updateAllPrinterInputs() {
         const printer = document.getElementById('printerSelect').value;
-        document.querySelectorAll('.file-printer-input').forEach(input => {
+        document.querySelectorAll('.printer-input').forEach(input => {
             input.value = printer;
         });
         document.getElementById('printTextPrinter').value = printer;
         document.getElementById('uploadPrinter').value = printer;
     }
 
-    // Escuchar cambios en el select para actualizar todos los inputs
-    document.getElementById('printerSelect').addEventListener('change', function() {
-        updateAllPrinterInputs();
-    });
+    function toggleUploadGrayscale() {
+        const input = document.getElementById('uploadGrayscale');
+        const btn = event.target;
+        input.value = input.value === 'true' ? 'false' : 'true';
+        btn.style.background = input.value === 'true' ? '#00ff88' : '#6f2da8';
+        btn.textContent = input.value === 'true' ? '⚫ B/N (activado)' : '⚫ B/N';
+    }
+
+    // ============================================================
+    // BUSCADOR
+    // ============================================================
+    function filterFiles() {
+        const query = document.getElementById('searchFiles').value.toLowerCase();
+        const items = document.querySelectorAll('.file-item');
+        items.forEach(item => {
+            const name = item.getAttribute('data-name') || '';
+            item.style.display = name.includes(query) ? '' : 'none';
+        });
+    }
 
     // ============================================================
     // INICIALIZAR
     // ============================================================
     document.addEventListener('DOMContentLoaded', function() {
-        // Inicializar impresora
-        initPrinter();
-        
-        // Cargar archivos
-        loadFiles();
-        
-        // Actualizar todos los inputs
+        // Seleccionar impresora por defecto
+        let defaultPrinter = document.querySelector('.printer-chip.active');
+        if (!defaultPrinter) {
+            defaultPrinter = document.querySelector('.printer-chip');
+        }
+        if (defaultPrinter) {
+            selectPrinter(defaultPrinter.textContent.trim());
+        }
+
+        // Sincronizar cambios del select
+        document.getElementById('printerSelect').addEventListener('change', function() {
+            const val = this.value;
+            if (val) {
+                document.querySelectorAll('.printer-chip').forEach(c => c.classList.remove('active'));
+                document.querySelectorAll('.printer-chip').forEach(c => {
+                    if (c.textContent.trim() === val) c.classList.add('active');
+                });
+                updateAllPrinterInputs();
+            }
+        });
+
+        // Actualizar inputs al cargar
         setTimeout(updateAllPrinterInputs, 100);
     });
 </script>

@@ -4,8 +4,8 @@
 """
 XONINAS 2026 v4.2.0 - NAS Local con Carpetas Protegidas y Soporte de Impresión
 Soporte para subida multiple, subcarpetas, QR, IP y autoapertura del navegador
-Soporte para impresión remota (puente entre dispositivos e impresora)
-Detección robusta de impresoras USB y de red - PERMITE SELECCIONAR CUALQUIER IMPRESORA
+Soporte para impresión remota con opción de blanco y negro
+Detección robusta de impresoras USB y de red
 
 Desarrollado por: Darian Alberto Camacho Salas
 Organizacion: XONIDU
@@ -55,12 +55,14 @@ FOLDERS_CSV = 'folders.csv'
 CONFIG_CSV = 'config.csv'
 PRINTERS_CSV = 'printers.csv'
 PRINT_QUEUE_DIR = 'print_queue'
+CONVERT_DIR = 'convertidos'
 
 STORAGE_PATH = os.environ.get('STORAGE_FOLDER', None)
 TUNNEL_URL = os.environ.get('TUNNEL_URL', None)
 
-# Crear directorio de cola de impresión
+# Crear directorios necesarios
 Path(PRINT_QUEUE_DIR).mkdir(parents=True, exist_ok=True)
+Path(CONVERT_DIR).mkdir(parents=True, exist_ok=True)
 
 # ============================================================================
 # Colores para terminal
@@ -262,10 +264,101 @@ def get_file_icon(filename):
         return '📎'
 
 # ============================================================================
-# FUNCIONES ROBUSTAS DE DETECCIÓN DE IMPRESORAS
+# FUNCIONES DE CONVERSIÓN A BLANCO Y NEGRO
+# ============================================================================
+def convert_pdf_to_grayscale(input_path, output_path):
+    """Convierte un PDF a escala de grises"""
+    try:
+        import aspose.pdf as ap
+        document = ap.Document(input_path)
+        strategy = ap.RgbToDeviceGrayConversionStrategy()
+        for page in range(1, len(document.pages) + 1):
+            strategy.convert(document.pages[page])
+        document.save(output_path)
+        return True, "PDF convertido a blanco y negro"
+    except ImportError:
+        # Fallback: usar Ghostscript si está disponible
+        if shutil.which('gs'):
+            try:
+                cmd = ['gs', '-sDEVICE=pdfwrite', '-sColorConversionStrategy=Gray',
+                       '-dProcessColorModel=/DeviceGray', '-dCompatibilityLevel=1.4',
+                       '-dNOPAUSE', '-dQUIET', '-dBATCH',
+                       f'-sOutputFile={output_path}', input_path]
+                subprocess.run(cmd, check=True, capture_output=True)
+                return True, "PDF convertido a blanco y negro (Ghostscript)"
+            except:
+                return False, "Error con Ghostscript"
+        return False, "Librería aspose-pdf no instalada. Ejecuta: pip install aspose-pdf"
+    except Exception as e:
+        return False, f"Error al convertir PDF: {str(e)}"
+
+def convert_word_to_grayscale(input_path, output_path):
+    """Convierte un Word a escala de grises"""
+    try:
+        import aspose.words as aw
+        import aspose.pdf as ap
+        import tempfile
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+            pdf_temp_path = tmp.name
+        
+        doc = aw.Document(input_path)
+        doc.save(pdf_temp_path, aw.SaveFormat.PDF)
+        
+        document = ap.Document(pdf_temp_path)
+        strategy = ap.RgbToDeviceGrayConversionStrategy()
+        for page in range(1, len(document.pages) + 1):
+            strategy.convert(document.pages[page])
+        document.save(output_path)
+        
+        try:
+            os.unlink(pdf_temp_path)
+        except:
+            pass
+        
+        return True, "Word convertido a blanco y negro"
+    except ImportError:
+        return False, "Librerías necesarias no instaladas. Ejecuta: pip install aspose-words aspose-pdf"
+    except Exception as e:
+        return False, f"Error al convertir Word: {str(e)}"
+
+def convert_image_to_grayscale(input_path, output_path):
+    """Convierte una imagen a escala de grises"""
+    try:
+        from PIL import Image
+        img = Image.open(input_path)
+        grayscale_img = img.convert('L')
+        if output_path.lower().endswith(('.jpg', '.jpeg')):
+            grayscale_img.save(output_path, 'JPEG', quality=95)
+        else:
+            grayscale_img.save(output_path, 'PNG')
+        return True, "Imagen convertida a blanco y negro"
+    except ImportError:
+        return False, "Librería Pillow no instalada. Ejecuta: pip install Pillow"
+    except Exception as e:
+        return False, f"Error al convertir imagen: {str(e)}"
+
+def convert_to_grayscale(input_path, output_path):
+    """Detecta el tipo de archivo y lo convierte a escala de grises"""
+    ext = os.path.splitext(input_path)[1].lower()
+    
+    # Actualizar extensión de salida para Word
+    if ext in ['.docx', '.doc']:
+        output_path = output_path.replace(ext, '.pdf')
+    
+    if ext == '.pdf':
+        return convert_pdf_to_grayscale(input_path, output_path)
+    elif ext in ['.docx', '.doc']:
+        return convert_word_to_grayscale(input_path, output_path)
+    elif ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp']:
+        return convert_image_to_grayscale(input_path, output_path)
+    else:
+        return False, f"Formato no soportado para conversión: {ext}"
+
+# ============================================================================
+# FUNCIONES DE DETECCIÓN DE IMPRESORAS
 # ============================================================================
 def get_system_printers():
-    """Obtiene lista de impresoras disponibles en el sistema con múltiples métodos"""
     printers = []
     sistema = platform.system()
     
@@ -278,7 +371,6 @@ def get_system_printers():
     elif sistema == 'Darwin':
         printers = get_mac_printers()
     
-    # Filtrar duplicados por nombre
     seen = set()
     unique_printers = []
     for p in printers:
@@ -289,23 +381,16 @@ def get_system_printers():
     
     if unique_printers:
         print(f"{Colors.GREEN}✅ Detectadas {len(unique_printers)} impresoras{Colors.END}")
-        for p in unique_printers[:5]:
-            print(f"   {Colors.GREEN}• {p['name']}{Colors.END}{' (por defecto)' if p.get('default') else ''}")
-        if len(unique_printers) > 5:
-            print(f"   {Colors.YELLOW}... y {len(unique_printers) - 5} más{Colors.END}")
     else:
         print(f"{Colors.YELLOW}⚠️ No se detectaron impresoras{Colors.END}")
     
     return unique_printers
 
 def get_windows_printers():
-    """Detección de impresoras en Windows (múltiples métodos)"""
     printers = []
-    
-    # Método 1: wmic (más completo)
     try:
         result = subprocess.run(
-            ['wmic', 'printer', 'get', 'name,default,shared,network,local'],
+            ['wmic', 'printer', 'get', 'name,default'],
             capture_output=True, text=True, shell=True, timeout=10
         )
         if result.returncode == 0:
@@ -315,7 +400,7 @@ def get_windows_printers():
                     if line.strip():
                         parts = line.split()
                         if parts:
-                            name = ' '.join(parts[:-3]) if len(parts) > 3 else parts[0]
+                            name = ' '.join(parts[:-1]) if len(parts) > 1 else parts[0]
                             printers.append({
                                 'name': name.strip(),
                                 'default': 'TRUE' in line if 'TRUE' in line else False,
@@ -323,35 +408,12 @@ def get_windows_printers():
                             })
     except Exception as e:
         print(f"  wmic falló: {e}")
-    
-    # Método 2: PowerShell (Get-Printer)
-    if not printers:
-        try:
-            ps_cmd = 'Get-Printer | Select-Object Name, Default'
-            result = subprocess.run(
-                ['powershell', '-Command', ps_cmd],
-                capture_output=True, text=True, timeout=15
-            )
-            if result.returncode == 0:
-                for line in result.stdout.split('\n'):
-                    if line.strip() and not line.startswith('Name'):
-                        parts = line.split()
-                        if parts:
-                            printers.append({
-                                'name': parts[0].strip(),
-                                'default': 'True' in line if 'True' in line else False,
-                                'type': 'PowerShell'
-                            })
-        except Exception as e:
-            print(f"  PowerShell falló: {e}")
-    
     return printers
 
 def get_linux_printers():
-    """Detección de impresoras en Linux (múltiples métodos) - INCLUYE USB Y RED"""
     printers = []
     
-    # Método 1: lpstat (CUPS) - impresoras configuradas
+    # lpstat
     try:
         result = subprocess.run(
             ['lpstat', '-p', '-d'],
@@ -364,16 +426,12 @@ def get_linux_printers():
                     name_match = re.search(r'printer\s+([^\s]+)', line)
                     if name_match:
                         name = name_match.group(1)
-                        printers.append({
-                            'name': name,
-                            'default': False,
-                            'type': 'CUPS'
-                        })
+                        if not any(p['name'] == name for p in printers):
+                            printers.append({'name': name, 'default': False, 'type': 'CUPS'})
                 if 'system default destination' in line:
                     default_match = re.search(r'destination:\s+([^\s]+)', line)
                     if default_match:
                         default_printer = default_match.group(1)
-            
             if default_printer:
                 for p in printers:
                     if p['name'] == default_printer:
@@ -381,108 +439,26 @@ def get_linux_printers():
     except Exception as e:
         print(f"  lpstat falló: {e}")
     
-    # Método 2: lpinfo -v para impresoras USB y de red (detecta todas las conectadas)
-    try:
-        result = subprocess.run(
-            ['lpinfo', '-v'],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            for line in result.stdout.split('\n'):
-                # Impresoras USB
-                if 'direct usb' in line or 'serial' in line:
-                    name_match = re.search(r'usb://([^/]+)/?', line)
-                    if name_match:
-                        name = name_match.group(1)
-                        if not any(p['name'] == name for p in printers):
-                            printers.append({
-                                'name': name,
-                                'default': False,
-                                'type': 'USB'
-                            })
-                    else:
-                        # Intentar extraer nombre del dispositivo
-                        clean_line = line.replace('direct ', '').replace('usb://', '')
-                        if clean_line and ':' not in clean_line:
-                            if not any(p['name'] == clean_line for p in printers):
-                                printers.append({
-                                    'name': clean_line[:50],
-                                    'default': False,
-                                    'type': 'USB'
-                                })
-                # Impresoras de red (IPP, LPD, etc.)
-                elif 'network' in line or 'ipp' in line or 'http' in line:
-                    name_match = re.search(r'://([^/]+)', line)
-                    if name_match:
-                        name = name_match.group(1)
-                        if not any(p['name'] == name for p in printers):
-                            printers.append({
-                                'name': name,
-                                'default': False,
-                                'type': 'Network'
-                            })
-    except Exception as e:
-        print(f"  lpinfo falló: {e}")
-    
-    # Método 3: lsusb para detectar impresoras USB directamente
+    # lsusb para impresoras USB
     if shutil.which('lsusb'):
         try:
-            result = subprocess.run(
-                ['lsusb'],
-                capture_output=True, text=True, timeout=5
-            )
+            result = subprocess.run(['lsusb'], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 for line in result.stdout.split('\n'):
                     if 'printer' in line.lower() or 'Brother' in line or 'HP' in line or 'Epson' in line:
-                        # Extraer información de la impresora
                         match = re.search(r'Bus\s+(\d+)\s+Device\s+(\d+):\s+ID\s+([0-9a-f:]+)\s+(.+)', line)
                         if match:
-                            vendor_id = match.group(3)
                             description = match.group(4).strip()
-                            if 'printer' in description.lower():
-                                name_match = re.search(r'([A-Za-z0-9\-]+)\s+([A-Za-z0-9\-]+)', description)
-                                if name_match:
-                                    name = f"{name_match.group(1)} {name_match.group(2)}"
-                                else:
-                                    name = description[:40]
-                                if not any(p['name'] == name for p in printers):
-                                    printers.append({
-                                        'name': name,
-                                        'default': False,
-                                        'type': 'lsusb'
-                                    })
+                            name = description[:40]
+                            if not any(p['name'] == name for p in printers):
+                                printers.append({'name': name, 'default': False, 'type': 'USB'})
         except Exception as e:
             print(f"  lsusb falló: {e}")
-    
-    # Método 4: Impresoras por avahi-browse (detección de red)
-    if shutil.which('avahi-browse'):
-        try:
-            result = subprocess.run(
-                ['avahi-browse', '-r', '-p', '-t', '_ipp._tcp'],
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                for line in result.stdout.split('\n'):
-                    if '=' in line:
-                        parts = line.split(';')
-                        if len(parts) > 6:
-                            name = parts[3] if len(parts) > 3 else ''
-                            if name and not any(p['name'] == name for p in printers):
-                                printers.append({
-                                    'name': name,
-                                    'default': False,
-                                    'type': 'Avahi'
-                                })
-        except:
-            pass
     
     return printers
 
 def get_mac_printers():
-    """Detección de impresoras en macOS"""
     printers = []
-    
-    # Método 1: lpstat (CUPS en macOS)
     try:
         result = subprocess.run(
             ['lpstat', '-p', '-d'],
@@ -495,54 +471,20 @@ def get_mac_printers():
                     name_match = re.search(r'printer\s+([^\s]+)', line)
                     if name_match:
                         name = name_match.group(1)
-                        printers.append({
-                            'name': name,
-                            'default': False,
-                            'type': 'CUPS'
-                        })
+                        printers.append({'name': name, 'default': False, 'type': 'CUPS'})
                 if 'system default destination' in line:
                     default_match = re.search(r'destination:\s+([^\s]+)', line)
                     if default_match:
                         default_printer = default_match.group(1)
-            
             if default_printer:
                 for p in printers:
                     if p['name'] == default_printer:
                         p['default'] = True
     except Exception as e:
         print(f"  lpstat falló: {e}")
-    
-    # Método 2: system_profiler
-    try:
-        result = subprocess.run(
-            ['system_profiler', 'SPPrintersDataType'],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            lines = result.stdout.split('\n')
-            current_printer = None
-            for line in lines:
-                if 'Printer Name' in line:
-                    name_match = re.search(r'Printer Name:\s+(.+)', line)
-                    if name_match:
-                        current_printer = name_match.group(1).strip()
-                        if current_printer and not any(p['name'] == current_printer for p in printers):
-                            printers.append({
-                                'name': current_printer,
-                                'default': False,
-                                'type': 'SystemProfiler'
-                            })
-                elif 'Default' in line and current_printer:
-                    for p in printers:
-                        if p['name'] == current_printer:
-                            p['default'] = True
-    except:
-        pass
-    
     return printers
 
 def refresh_printers():
-    """Actualiza la lista de impresoras desde el sistema y la guarda en CSV"""
     printers = get_system_printers()
     if printers:
         with open(PRINTERS_CSV, 'w', newline='') as f:
@@ -550,14 +492,13 @@ def refresh_printers():
             writer.writeheader()
             for p in printers:
                 writer.writerow({
-                    'name': p['name'], 
+                    'name': p['name'],
                     'default': str(p.get('default', False)),
                     'type': p.get('type', 'Unknown')
                 })
     return printers
 
 def load_printers():
-    """Carga la lista de impresoras desde CSV o del sistema"""
     if not os.path.exists(PRINTERS_CSV):
         return refresh_printers()
     
@@ -579,14 +520,35 @@ def load_printers():
     
     return printers
 
-def print_file(file_path, printer_name=None):
-    """Envía un archivo a la impresora - USA LA IMPRESORA SELECCIONADA"""
+def print_file(file_path, printer_name=None, grayscale=False):
+    """Envía un archivo a la impresora con opción de blanco y negro"""
     sistema = platform.system()
     
     try:
         if not os.path.exists(file_path):
             return False, "Archivo no encontrado"
         
+        # Si se solicita blanco y negro, convertir primero
+        if grayscale:
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext in ['.pdf', '.docx', '.doc', '.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp']:
+                print(f"{Colors.CYAN}🔄 Convirtiendo a blanco y negro...{Colors.END}")
+                temp_dir = tempfile.mkdtemp()
+                output_filename = f"byn_{os.path.basename(file_path)}"
+                if ext in ['.docx', '.doc']:
+                    output_filename = output_filename.replace(ext, '.pdf')
+                output_path = os.path.join(temp_dir, output_filename)
+                
+                success, message = convert_to_grayscale(file_path, output_path)
+                if not success:
+                    shutil.rmtree(temp_dir)
+                    return False, f"Error en conversión: {message}"
+                file_path = output_path
+                print(f"{Colors.GREEN}✅ Conversión completada{Colors.END}")
+            else:
+                return False, f"Formato no soportado para blanco y negro: {ext}"
+        
+        # Imprimir
         if sistema == 'Windows':
             if printer_name:
                 cmd = ['print', '/D:' + printer_name, file_path]
@@ -595,7 +557,6 @@ def print_file(file_path, printer_name=None):
             print(f"  Comando: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=60)
         else:
-            # Linux/macOS: usar lp con la impresora especificada
             cmd = ['lp']
             if printer_name:
                 cmd.extend(['-d', printer_name])
@@ -603,11 +564,12 @@ def print_file(file_path, printer_name=None):
             print(f"  Comando: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         
-        print(f"  Código de retorno: {result.returncode}")
-        if result.stdout:
-            print(f"  STDOUT: {result.stdout[:200]}")
-        if result.stderr:
-            print(f"  STDERR: {result.stderr[:200]}")
+        # Limpiar archivo temporal si existe
+        if grayscale and 'temp_dir' in locals():
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
         
         if result.returncode == 0:
             return True, result.stdout or "Impresión enviada correctamente"
@@ -615,14 +577,12 @@ def print_file(file_path, printer_name=None):
             return False, result.stderr or "Error al imprimir"
             
     except subprocess.TimeoutExpired:
-        return False, "Tiempo de espera agotado. Verifica que la impresora esté conectada."
+        return False, "Tiempo de espera agotado"
     except Exception as e:
         return False, str(e)
 
 def print_text(text, printer_name=None):
-    """Imprime texto directamente"""
     sistema = platform.system()
-    
     try:
         if sistema == 'Windows':
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
@@ -644,14 +604,10 @@ def print_text(text, printer_name=None):
             return True, result.stdout or "Texto impreso correctamente"
         else:
             return False, result.stderr or "Error al imprimir"
-            
-    except subprocess.TimeoutExpired:
-        return False, "Tiempo de espera agotado."
     except Exception as e:
         return False, str(e)
 
 def get_qr_code_image(url):
-    """Genera imagen QR para incrustar en HTML"""
     if not QR_AVAILABLE:
         return None
     try:
@@ -670,7 +626,7 @@ def get_qr_code_image(url):
         return None
 
 # ============================================================================
-# Rutas web
+# Rutas web (NAS)
 # ============================================================================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -888,18 +844,43 @@ def delete_file(folder_name, filename):
     return redirect(url_for('folder_contents', folder_name=folder_name))
 
 # ============================================================================
-# RUTAS DE IMPRESIÓN
+# RUTAS DE IMPRESIÓN (con opción de blanco y negro)
 # ============================================================================
 @app.route('/print')
 def print_page():
-    """Página de impresión remota con QR"""
+    """Página de impresión remota con archivos del NAS y opción blanco y negro"""
     if not session.get('master_authenticated'):
         return redirect(url_for('login'))
     printers = load_printers()
     
-    # Generar QR para la página de impresión
-    qr_url = None
+    # Obtener archivos de todas las carpetas del NAS
+    all_files = []
+    folders = load_folders()
+    for folder in folders:
+        folder_path = Path(app.config['STORAGE_FOLDER']) / folder['name']
+        if folder_path.exists():
+            for item in folder_path.iterdir():
+                if item.is_file():
+                    s = item.stat()
+                    # Verificar si es imprimible
+                    ext = os.path.splitext(item.name)[1].lower()
+                    printable = ext in ['.pdf', '.txt', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.bmp']
+                    all_files.append({
+                        'name': item.name,
+                        'folder': folder['name'],
+                        'size': s.st_size,
+                        'size_formatted': format_size(s.st_size),
+                        'modified': datetime.fromtimestamp(s.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                        'icon': get_file_icon(item.name),
+                        'printable': printable,
+                        'ext': ext
+                    })
+    
+    all_files.sort(key=lambda x: x['name'].lower())
+    
+    # Generar QR
     qr_image = None
+    qr_url = None
     try:
         ip = get_local_ip()
         if ip.startswith('127.'):
@@ -910,11 +891,14 @@ def print_page():
     except:
         pass
     
-    return render_template('print.html', printers=printers, qr_image=qr_image, qr_url=qr_url)
+    return render_template('print.html', 
+                          printers=printers, 
+                          files=all_files,
+                          qr_image=qr_image, 
+                          qr_url=qr_url)
 
 @app.route('/print/refresh')
 def print_refresh():
-    """Actualiza la lista de impresoras y redirige a print"""
     if not session.get('master_authenticated'):
         return redirect(url_for('login'))
     refresh_printers()
@@ -922,16 +906,18 @@ def print_refresh():
 
 @app.route('/print/file', methods=['POST'])
 def print_file_route():
-    """Imprime un archivo desde el NAS usando la impresora SELECCIONADA"""
+    """Imprime un archivo con opción de blanco y negro"""
     if not session.get('master_authenticated'):
         return redirect(url_for('login'))
     
     folder_name = request.form.get('folder_name')
     filename = request.form.get('filename')
     printer_name = request.form.get('printer_name', '')
+    grayscale = request.form.get('grayscale', 'false') == 'true'
     
     print(f"{Colors.CYAN}📤 Imprimiendo archivo: {filename}{Colors.END}")
-    print(f"  Impresora seleccionada: {printer_name if printer_name else '(por defecto)'}")
+    print(f"  Impresora: {printer_name if printer_name else '(por defecto)'}")
+    print(f"  Blanco y negro: {'Sí' if grayscale else 'No'}")
     
     if not folder_name or not filename:
         return "Faltan parámetros", 400
@@ -943,12 +929,7 @@ def print_file_route():
     if not file_path.exists():
         return "Archivo no encontrado", 404
     
-    ext = os.path.splitext(filename)[1].lower()
-    print_extensions = ['.pdf', '.txt', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.bmp']
-    if ext not in print_extensions:
-        return f"Formato no imprimible: {ext}", 400
-    
-    success, message = print_file(str(file_path), printer_name if printer_name else None)
+    success, message = print_file(str(file_path), printer_name if printer_name else None, grayscale)
     
     if success:
         return render_template('print_result.html', success=True, message=message)
@@ -957,7 +938,6 @@ def print_file_route():
 
 @app.route('/print/text', methods=['POST'])
 def print_text_route():
-    """Imprime texto directamente"""
     if not session.get('master_authenticated'):
         return redirect(url_for('login'))
     
@@ -965,7 +945,7 @@ def print_text_route():
     printer_name = request.form.get('printer_name', '')
     
     print(f"{Colors.CYAN}📤 Imprimiendo texto{Colors.END}")
-    print(f"  Impresora seleccionada: {printer_name if printer_name else '(por defecto)'}")
+    print(f"  Impresora: {printer_name if printer_name else '(por defecto)'}")
     
     if not text:
         return "Texto vacío", 400
@@ -979,7 +959,6 @@ def print_text_route():
 
 @app.route('/print/upload', methods=['POST'])
 def print_upload_route():
-    """Sube un archivo y lo imprime usando la impresora SELECCIONADA"""
     if not session.get('master_authenticated'):
         return redirect(url_for('login'))
     
@@ -988,9 +967,11 @@ def print_upload_route():
     
     file = request.files['file']
     printer_name = request.form.get('printer_name', '')
+    grayscale = request.form.get('grayscale', 'false') == 'true'
     
     print(f"{Colors.CYAN}📤 Subiendo e imprimiendo: {file.filename}{Colors.END}")
-    print(f"  Impresora seleccionada: {printer_name if printer_name else '(por defecto)'}")
+    print(f"  Impresora: {printer_name if printer_name else '(por defecto)'}")
+    print(f"  Blanco y negro: {'Sí' if grayscale else 'No'}")
     
     if file.filename == '':
         return "Nombre de archivo vacío", 400
@@ -999,7 +980,7 @@ def print_upload_route():
     queue_path = Path(PRINT_QUEUE_DIR) / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
     file.save(queue_path)
     
-    success, message = print_file(str(queue_path), printer_name if printer_name else None)
+    success, message = print_file(str(queue_path), printer_name if printer_name else None, grayscale)
     
     try:
         os.unlink(queue_path)
@@ -1012,12 +993,12 @@ def print_upload_route():
         return render_template('print_result.html', success=False, error=message)
 
 # ============================================================================
-# Inicio con informacion completa
+# Inicio
 # ============================================================================
 def print_startup_info():
     print()
     print(f"{Colors.PURPLE}{'='*60}{Colors.END}")
-    print(f"{Colors.BOLD}{Colors.GREEN}XONINAS NAS INICIADO (con soporte de impresión){Colors.END}")
+    print(f"{Colors.BOLD}{Colors.GREEN}XONINAS NAS INICIADO (con soporte de impresión y conversión B/N){Colors.END}")
     print(f"{Colors.PURPLE}{'='*60}{Colors.END}")
     
     print(f"\n{Colors.CYAN}Almacenamiento:{Colors.END} {app.config['STORAGE_FOLDER']}")
@@ -1041,7 +1022,6 @@ def print_startup_info():
         if qr_url is None:
             qr_url = TUNNEL_URL
     
-    # Mostrar impresoras detectadas
     printers = load_printers()
     print(f"\n{Colors.BOLD}🖨️ Impresoras detectadas:{Colors.END}")
     if printers:
@@ -1062,7 +1042,7 @@ def print_startup_info():
     
     print(f"\n{Colors.BOLD}Subida multiple:{Colors.END} Puedes seleccionar varios archivos a la vez")
     print(f"{Colors.BOLD}Subida de carpetas:{Colors.END} Arrastra carpetas completas (se suben como ZIP)")
-    print(f"{Colors.BOLD}Impresión remota:{Colors.END} Envía archivos a la impresora desde cualquier dispositivo")
+    print(f"{Colors.BOLD}Impresión remota:{Colors.END} Con opción de blanco y negro")
     print(f"{Colors.BOLD}Clave por defecto:{Colors.END} admin (si no la cambiaste)")
     print(f"{Colors.BOLD}Para detener:{Colors.END} Ctrl+C")
     print(f"{Colors.PURPLE}{'='*60}{Colors.END}\n")
@@ -1079,9 +1059,6 @@ def open_browser():
     except:
         pass
 
-# ============================================================================
-# Ejecucion principal
-# ============================================================================
 if __name__ == '__main__':
     init_storage_path()
     
