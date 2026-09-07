@@ -6,7 +6,7 @@ XONINAS 2026 - Lanzador Ultrarrobusto
 NAS Local con Carpetas Protegidas
 Incluye gestion automatica de STORAGE_FOLDER, pip, dependencias y Cloudflare Tunnel
 Captura la URL del tunel y la pasa a xoninas.py
-Soporte para conversión a blanco y negro (Pillow, PyMuPDF, python-docx)
+Soporte para conversión a blanco y negro (Ghostscript + Pillow + PyMuPDF)
 
 Desarrollado por: Darian Alberto Camacho Salas
 Organizacion: XONIDU
@@ -68,16 +68,26 @@ def get_linux_distro():
         if os.path.exists('/etc/os-release'):
             with open('/etc/os-release', 'r') as f:
                 content = f.read().lower()
-                if 'ubuntu' in content or 'debian' in content or 'mint' in content:
+                if 'ubuntu' in content or 'debian' in content or 'mint' in content or 'antix' in content:
                     return 'debian-based'
                 elif 'arch' in content or 'manjaro' in content:
                     return 'arch-based'
                 elif 'fedora' in content:
                     return 'fedora'
+                elif 'centos' in content or 'rhel' in content:
+                    return 'rhel-based'
+                elif 'opensuse' in content:
+                    return 'opensuse-based'
         if shutil.which('apt'):
             return 'debian-based'
         elif shutil.which('pacman'):
             return 'arch-based'
+        elif shutil.which('dnf'):
+            return 'fedora'
+        elif shutil.which('yum'):
+            return 'rhel-based'
+        elif shutil.which('zypper'):
+            return 'opensuse-based'
         return 'linux-generic'
     except:
         return 'linux-generic'
@@ -198,7 +208,104 @@ def ensure_storage_folder():
     return storage_path
 
 # ============================================================================
-# Dependencias (ACTUALIZADO con soporte B/N)
+# Verificacion e instalacion de Ghostscript
+# ============================================================================
+def check_ghostscript():
+    """Verifica si Ghostscript está instalado en el sistema"""
+    return shutil.which('gs') is not None
+
+def install_ghostscript_linux():
+    """Instala Ghostscript en Linux según la distribución"""
+    distro = get_linux_distro()
+    print(f"{Colors.YELLOW}Instalando Ghostscript en Linux ({distro})...{Colors.END}")
+    
+    if distro == 'debian-based':
+        try:
+            subprocess.run(['sudo', 'apt', 'update'], check=False)
+            subprocess.run(['sudo', 'apt', 'install', '-y', 'ghostscript'], check=True)
+            print(f"{Colors.GREEN}Ghostscript instalado correctamente{Colors.END}")
+            return True
+        except:
+            return False
+    elif distro == 'arch-based':
+        try:
+            subprocess.run(['sudo', 'pacman', '-S', '--noconfirm', 'ghostscript'], check=True)
+            print(f"{Colors.GREEN}Ghostscript instalado correctamente{Colors.END}")
+            return True
+        except:
+            return False
+    elif distro == 'fedora':
+        try:
+            subprocess.run(['sudo', 'dnf', 'install', '-y', 'ghostscript'], check=True)
+            print(f"{Colors.GREEN}Ghostscript instalado correctamente{Colors.END}")
+            return True
+        except:
+            return False
+    elif distro == 'rhel-based':
+        try:
+            subprocess.run(['sudo', 'yum', 'install', '-y', 'ghostscript'], check=True)
+            print(f"{Colors.GREEN}Ghostscript instalado correctamente{Colors.END}")
+            return True
+        except:
+            return False
+    elif distro == 'opensuse-based':
+        try:
+            subprocess.run(['sudo', 'zypper', 'install', '-y', 'ghostscript'], check=True)
+            print(f"{Colors.GREEN}Ghostscript instalado correctamente{Colors.END}")
+            return True
+        except:
+            return False
+    else:
+        print(f"{Colors.RED}Distribución no reconocida. Instala Ghostscript manualmente.{Colors.END}")
+        return False
+
+def install_ghostscript_mac():
+    """Instala Ghostscript en macOS usando Homebrew"""
+    if shutil.which('brew'):
+        try:
+            subprocess.run(['brew', 'install', 'ghostscript'], check=True)
+            print(f"{Colors.GREEN}Ghostscript instalado correctamente{Colors.END}")
+            return True
+        except:
+            return False
+    else:
+        print(f"{Colors.YELLOW}Homebrew no encontrado. Instala Ghostscript manualmente desde: https://www.ghostscript.com/{Colors.END}")
+        return False
+
+def install_ghostscript_windows():
+    """Instrucciones para instalar Ghostscript en Windows"""
+    print(f"{Colors.YELLOW}Ghostscript en Windows:{Colors.END}")
+    print(f"  1. Descarga desde: https://www.ghostscript.com/releases/gsdnld.html")
+    print(f"  2. Ejecuta el instalador y selecciona 'Agregar al PATH'")
+    print(f"  3. Reinicia la terminal")
+    return False
+
+def ensure_ghostscript():
+    """Asegura que Ghostscript esté instalado"""
+    if check_ghostscript():
+        print(f"{Colors.GREEN}✅ Ghostscript disponible{Colors.END}")
+        return True
+    
+    sistema = get_system()
+    print(f"\n{Colors.YELLOW}⚠️ Ghostscript no está instalado (necesario para conversión B/N){Colors.END}")
+    resp = input("¿Deseas instalarlo automáticamente? (s/n): ")
+    
+    if resp.lower() != 's':
+        print(f"{Colors.YELLOW}Ghostscript no instalado. La conversión a blanco y negro NO funcionará.{Colors.END}")
+        return False
+    
+    if sistema == 'linux':
+        return install_ghostscript_linux()
+    elif sistema == 'darwin':
+        return install_ghostscript_mac()
+    elif sistema == 'windows':
+        return install_ghostscript_windows()
+    else:
+        print(f"{Colors.RED}Sistema no soportado para instalación automática{Colors.END}")
+        return False
+
+# ============================================================================
+# Dependencias
 # ============================================================================
 def check_python():
     try:
@@ -246,21 +353,19 @@ def check_python_module(module_name):
 
 def check_dependencies():
     print(f"\n{Colors.BOLD}Verificando dependencias...{Colors.END}")
-    # Dependencias actualizadas con soporte B/N
     dependencies = [
         ('flask', 'flask'),
         ('werkzeug', 'werkzeug'),
         ('waitress', 'waitress'),
         ('requests', 'requests'),
         ('qrcode', 'qrcode'),
-        ('PIL', 'Pillow'),       # Para imágenes
-        ('fitz', 'PyMuPDF'),     # Para PDF y Word (recomendado)
-        ('docx', 'python-docx'), # Para Word (fallback)
+        ('PIL', 'Pillow'),
+        ('fitz', 'PyMuPDF'),
+        ('docx', 'python-docx'),
     ]
     missing = []
     for module, package in dependencies:
-        # Para PIL, el módulo se llama 'PIL' pero el paquete es 'Pillow'
-        # Para fitz, el módulo se llama 'fitz' pero el paquete es 'PyMuPDF'
+        # PIL se importa como 'PIL' pero el paquete es 'Pillow'
         if check_python_module(module):
             print(f"{Colors.GREEN}  {package} OK{Colors.END}")
         else:
@@ -481,7 +586,7 @@ def main():
     else:
         print(f"{Colors.GREEN}Pip disponible{Colors.END}")
     
-    # Dependencias (AHORA INCLUYE Pillow, PyMuPDF, python-docx)
+    # Dependencias Python
     missing = check_dependencies()
     if missing:
         print(f"\n{Colors.YELLOW}Faltan {len(missing)} dependencias.{Colors.END}")
@@ -494,6 +599,9 @@ def main():
         else:
             print(f"{Colors.YELLOW}No se instalaran. El programa podria fallar.{Colors.END}")
             print(f"{Colors.YELLOW}  La conversión a blanco y negro NO estará disponible.{Colors.END}")
+    
+    # Ghostscript (necesario para conversión B/N)
+    ensure_ghostscript()
     
     # STORAGE_FOLDER
     storage_path = ensure_storage_folder()

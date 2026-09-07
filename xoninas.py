@@ -4,8 +4,7 @@
 """
 XONINAS 2026 v4.2.0 - NAS Local con Carpetas Protegidas y Soporte de Impresión
 Soporte para subida multiple, subcarpetas, QR, IP y autoapertura del navegador
-Soporte para impresión remota con conversión a blanco y negro integrada
-Detección robusta de impresoras USB y de red
+Soporte para impresión remota con conversión a blanco y negro (Ghostscript principal)
 
 Desarrollado por: Darian Alberto Camacho Salas
 Organizacion: XONIDU
@@ -265,8 +264,85 @@ def get_file_icon(filename):
         return '📎'
 
 # ============================================================================
-# FUNCIONES DE CONVERSIÓN A BLANCO Y NEGRO (SOLO PYTHON)
+# FUNCIONES DE CONVERSIÓN A BLANCO Y NEGRO (Ghostscript como principal)
 # ============================================================================
+
+def check_ghostscript():
+    """Verifica si Ghostscript está instalado"""
+    return shutil.which('gs') is not None
+
+def convert_pdf_to_grayscale_gs(input_path, output_path):
+    """Método 1: Ghostscript (PRINCIPAL) - Más rápido y confiable"""
+    if not check_ghostscript():
+        return False, "Ghostscript no instalado. Ejecuta: sudo apt install ghostscript (o el gestor de tu distro)"
+    
+    try:
+        cmd = [
+            'gs', '-sDEVICE=pdfwrite',
+            '-sColorConversionStrategy=Gray',
+            '-dProcessColorModel=/DeviceGray',
+            '-dCompatibilityLevel=1.4',
+            '-dNOPAUSE', '-dQUIET', '-dBATCH',
+            f'-sOutputFile={output_path}',
+            input_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return True, "PDF convertido con Ghostscript"
+        else:
+            return False, f"Ghostscript error: {result.stderr[:200] if result.stderr else 'Error desconocido'}"
+    except subprocess.TimeoutExpired:
+        return False, "Tiempo de espera agotado (3 minutos)"
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+
+def convert_pdf_to_grayscale_fallback(input_path, output_path):
+    """Método 2: PyMuPDF (fallback) - Si Ghostscript falla"""
+    try:
+        import fitz
+        from PIL import Image
+        import io
+        
+        doc = fitz.open(input_path)
+        new_doc = fitz.open()
+        
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            pix = page.get_pixmap(dpi=150)
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            gray_img = img.convert('L')
+            img_bytes = io.BytesIO()
+            gray_img.save(img_bytes, format='PNG')
+            img_bytes.seek(0)
+            new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
+            new_page.insert_image(new_page.rect, stream=img_bytes.getvalue())
+        
+        new_doc.save(output_path)
+        new_doc.close()
+        doc.close()
+        return True, "PDF convertido con PyMuPDF (fallback)"
+    except ImportError:
+        return False, "PyMuPDF no instalado (fallback no disponible)"
+    except Exception as e:
+        return False, f"Error en fallback: {str(e)[:100]}"
+
+def convert_pdf_to_grayscale(input_path, output_path):
+    """Convierte PDF a escala de grises - Ghostscript como principal"""
+    print(f"{Colors.CYAN}🔄 Convirtiendo PDF a blanco y negro...{Colors.END}")
+    
+    # Primero intentar con Ghostscript (método principal)
+    success, message = convert_pdf_to_grayscale_gs(input_path, output_path)
+    if success:
+        return True, message
+    
+    # Si falla, intentar con PyMuPDF (fallback)
+    print(f"{Colors.YELLOW}  Ghostscript falló: {message}{Colors.END}")
+    print(f"{Colors.YELLOW}  Intentando con PyMuPDF (fallback)...{Colors.END}")
+    success, message = convert_pdf_to_grayscale_fallback(input_path, output_path)
+    if success:
+        return True, message
+    
+    return False, message
 
 def convert_image_to_grayscale(input_path, output_path):
     """Convierte una imagen a escala de grises usando Pillow"""
@@ -275,7 +351,6 @@ def convert_image_to_grayscale(input_path, output_path):
         img = Image.open(input_path)
         grayscale_img = img.convert('L')
         
-        # Preservar formato
         ext = os.path.splitext(output_path)[1].lower()
         if ext in ['.jpg', '.jpeg']:
             grayscale_img.save(output_path, 'JPEG', quality=90)
@@ -285,157 +360,54 @@ def convert_image_to_grayscale(input_path, output_path):
             grayscale_img.save(output_path)
         return True, "Imagen convertida a blanco y negro"
     except ImportError:
-        return False, "Pillow no instalado. Ejecuta: pip install Pillow"
+        return False, "Pillow no instalado"
     except Exception as e:
         return False, f"Error: {str(e)}"
 
-def convert_pdf_to_grayscale(input_path, output_path):
-    """Convierte un PDF a escala de grises usando PyMuPDF (fitz) o Ghostscript"""
-    # Método 1: Intentar con PyMuPDF (fitz)
-    try:
-        import fitz  # PyMuPDF
-        doc = fitz.open(input_path)
-        pdf_bytes = None
-        
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            # Convertir página a imagen (matriz de pixeles)
-            pix = page.get_pixmap()
-            # Crear una imagen PIL a partir del pixmap
-            from PIL import Image
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            # Convertir a escala de grises
-            gray_img = img.convert('L')
-            # Guardar en bytes
-            img_bytes = io.BytesIO()
-            gray_img.save(img_bytes, format='PNG')
-            img_bytes.seek(0)
-            
-            # Actualizar la página con la imagen en escala de grises
-            # Insertar imagen en la página
-            rect = page.rect
-            page.insert_image(rect, stream=img_bytes.getvalue())
-        
-        doc.save(output_path)
-        doc.close()
-        return True, "PDF convertido a blanco y negro (PyMuPDF)"
-    except ImportError:
-        print(f"{Colors.YELLOW}PyMuPDF no instalado. Probando Ghostscript...{Colors.END}")
-    except Exception as e:
-        print(f"{Colors.YELLOW}Error con PyMuPDF: {e}. Probando Ghostscript...{Colors.END}")
-    
-    # Método 2: Ghostscript (fallback)
-    if shutil.which('gs'):
-        try:
-            cmd = [
-                'gs', '-sDEVICE=pdfwrite',
-                '-sColorConversionStrategy=Gray',
-                '-dProcessColorModel=/DeviceGray',
-                '-dCompatibilityLevel=1.4',
-                '-dNOPAUSE', '-dQUIET', '-dBATCH',
-                f'-sOutputFile={output_path}',
-                input_path
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if result.returncode == 0:
-                return True, "PDF convertido a blanco y negro (Ghostscript)"
-            else:
-                return False, f"Ghostscript error: {result.stderr}"
-        except Exception as e:
-            return False, f"Error con Ghostscript: {str(e)}"
-    else:
-        return False, "Instala PyMuPDF (pip install PyMuPDF) o Ghostscript para convertir PDFs"
-
 def convert_word_to_grayscale(input_path, output_path):
-    """Convierte un documento Word a escala de grises"""
+    """Convierte Word a PDF (con Ghostscript si es posible)"""
     try:
-        # Intentar usar PyMuPDF para Word (requiere fitz)
-        import fitz
-        from PIL import Image
-        import io
-        
-        # Abrir el documento con fitz (soporta .docx)
-        doc = fitz.open(input_path)
-        
-        # Crear nuevo PDF en escala de grises
-        new_doc = fitz.open()
-        
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            pix = page.get_pixmap()
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            gray_img = img.convert('L')
-            
-            img_bytes = io.BytesIO()
-            gray_img.save(img_bytes, format='PNG')
-            img_bytes.seek(0)
-            
-            # Crear nueva página en el nuevo documento
-            new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
-            new_page.insert_image(new_page.rect, stream=img_bytes.getvalue())
-        
-        new_doc.save(output_path)
-        new_doc.close()
-        doc.close()
-        return True, "Word convertido a blanco y negro (PyMuPDF)"
-    except ImportError:
-        print(f"{Colors.YELLOW}PyMuPDF no instalado. Intentando con python-docx + Pillow...{Colors.END}")
-    except Exception as e:
-        print(f"{Colors.YELLOW}Error con PyMuPDF: {e}. Intentando otro método...{Colors.END}")
-    
-    # Método 2: Usar python-docx (solo texto, imágenes se convierten)
-    try:
-        from docx import Document
-        from docx.shared import Inches
-        from PIL import Image
-        import io
-        
-        doc = Document(input_path)
-        # Crear un nuevo documento
-        new_doc = Document()
-        
-        for para in doc.paragraphs:
-            new_doc.add_paragraph(para.text)
-        
-        # Procesar tablas
-        for table in doc.tables:
-            new_table = new_doc.add_table(rows=len(table.rows), cols=len(table.columns))
-            for i, row in enumerate(table.rows):
-                for j, cell in enumerate(row.cells):
-                    new_table.cell(i, j).text = cell.text
-        
-        # Guardar como Word (no se puede convertir a PDF directamente)
-        temp_docx = output_path.replace('.pdf', '_temp.docx')
-        new_doc.save(temp_docx)
-        
-        # Luego convertir a PDF con Ghostscript o reportlab
+        # Intentar convertir Word a PDF primero (con unoconv o libreoffice)
         if shutil.which('unoconv'):
-            try:
-                subprocess.run(['unoconv', '-f', 'pdf', '-o', output_path, temp_docx], 
-                              capture_output=True, timeout=60)
-                os.unlink(temp_docx)
-                # Ahora convertir el PDF resultante a escala de grises
-                convert_pdf_to_grayscale(output_path, output_path)
-                return True, "Word convertido a blanco y negro"
-            except:
-                pass
+            temp_pdf = output_path.replace('.pdf', '_temp.pdf')
+            result = subprocess.run(['unoconv', '-f', 'pdf', '-o', temp_pdf, input_path],
+                                   capture_output=True, timeout=120)
+            if result.returncode == 0 and os.path.exists(temp_pdf):
+                # Convertir PDF a escala de grises
+                success, message = convert_pdf_to_grayscale(temp_pdf, output_path)
+                try:
+                    os.unlink(temp_pdf)
+                except:
+                    pass
+                return success, message
+        # Fallback: usar python-docx para convertir a texto
+        try:
+            from docx import Document
+            doc = Document(input_path)
+            # Crear PDF simple con ReportLab (solo texto)
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.units import mm
+            
+            c = canvas.Canvas(output_path, pagesize=A4)
+            width, height = A4
+            y = height - 20
+            
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    c.drawString(20, y, para.text[:100])
+                    y -= 15
+                    if y < 20:
+                        c.showPage()
+                        y = height - 20
+            c.save()
+            return True, "Word convertido a PDF (texto)"
+        except ImportError:
+            pass
         
-        # Fallback: usar Ghostscript para convertir el DOCX a PDF (si es compatible)
-        if shutil.which('gs'):
-            try:
-                cmd = ['gs', '-sDEVICE=pdfwrite', '-sColorConversionStrategy=Gray',
-                       '-dProcessColorModel=/DeviceGray', '-dCompatibilityLevel=1.4',
-                       '-dNOPAUSE', '-dQUIET', '-dBATCH',
-                       f'-sOutputFile={output_path}', temp_docx]
-                subprocess.run(cmd, capture_output=True, timeout=60)
-                os.unlink(temp_docx)
-                return True, "Word convertido a blanco y negro (Ghostscript)"
-            except:
-                pass
-        
-        return False, "No se pudo convertir Word a PDF. Instala: pip install PyMuPDF"
-    except ImportError:
-        return False, "python-docx no instalado. Ejecuta: pip install python-docx"
+        return False, "No se pudo convertir Word a PDF. Instala: unoconv o libreoffice"
+    except Exception as e:
+        return False, f"Error: {str(e)[:100]}"
 
 def convert_to_grayscale(input_path, output_path):
     """Detecta el tipo de archivo y lo convierte a escala de grises"""
@@ -446,7 +418,6 @@ def convert_to_grayscale(input_path, output_path):
     if ext == '.pdf':
         return convert_pdf_to_grayscale(input_path, output_path)
     elif ext in ['.docx', '.doc']:
-        # Cambiar extensión de salida a PDF para Word
         output_path = output_path.replace(ext, '.pdf')
         return convert_word_to_grayscale(input_path, output_path)
     elif ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp']:
@@ -512,7 +483,6 @@ def get_windows_printers():
 def get_linux_printers():
     printers = []
     
-    # lpstat
     try:
         result = subprocess.run(
             ['lpstat', '-p', '-d'],
@@ -538,7 +508,6 @@ def get_linux_printers():
     except Exception as e:
         print(f"  lpstat falló: {e}")
     
-    # lsusb para impresoras USB
     if shutil.which('lsusb'):
         try:
             result = subprocess.run(['lsusb'], capture_output=True, text=True, timeout=5)
@@ -620,11 +589,11 @@ def load_printers():
     return printers
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL DE IMPRESIÓN CON CONVERSIÓN B/N
+# FUNCIÓN PRINCIPAL DE IMPRESIÓN
 # ============================================================================
 
 def print_file(file_path, printer_name=None, grayscale=False):
-    """Envía un archivo a la impresora con opción de conversión a blanco y negro"""
+    """Envía un archivo a la impresora con opción de blanco y negro (Ghostscript)"""
     sistema = platform.system()
     
     try:
@@ -681,7 +650,7 @@ def print_file(file_path, printer_name=None, grayscale=False):
             return False, result.stderr or "Error al imprimir"
             
     except subprocess.TimeoutExpired:
-        return False, "Tiempo de espera agotado. Verifica que la impresora esté conectada."
+        return False, "Tiempo de espera agotado"
     except Exception as e:
         return False, str(e)
 
@@ -1134,12 +1103,18 @@ def print_startup_info():
     else:
         print(f"   {Colors.YELLOW}⚠️ No se detectaron impresoras{Colors.END}")
     
+    # Verificar Ghostscript
+    if check_ghostscript():
+        print(f"\n{Colors.GREEN}✅ Ghostscript disponible - Conversión B/N lista{Colors.END}")
+    else:
+        print(f"\n{Colors.YELLOW}⚠️ Ghostscript no instalado. Instala: sudo apt install ghostscript{Colors.END}")
+    
     if qr_url:
         print(f"\n{Colors.BOLD}Codigo QR para escanear:{Colors.END}")
         print_qr_in_terminal(qr_url)
         print(f"{Colors.YELLOW}   Escanea con tu movil para acceder automaticamente{Colors.END}")
     
-    print(f"\n{Colors.BOLD}Impresión remota:{Colors.END} Con opción de blanco y negro")
+    print(f"\n{Colors.BOLD}Impresión remota:{Colors.END} Con opción de blanco y negro (Ghostscript)")
     print(f"{Colors.BOLD}Clave por defecto:{Colors.END} admin (si no la cambiaste)")
     print(f"{Colors.BOLD}Para detener:{Colors.END} Ctrl+C")
     print(f"{Colors.PURPLE}{'='*60}{Colors.END}\n")
