@@ -62,11 +62,7 @@ DEFAULTS = {
 }
 SMTP_SERVER, SMTP_PORT = 'smtp.gmail.com', 587
 NET_RETRY = 5                 # s entre reintentos cuando NO hay red
-NET_CHECK = 5                 # s entre chequeos cuando sí hay red (detecta la caída rápido)
-TUNNEL_CHECK_INTERVAL = 600   # s (10 min) entre pings al túnel
-TUNNEL_CHECK_ATTEMPTS = 5     # pings por verificación; basta uno que responda
-TUNNEL_RESTART_DELAY = 5      # s de espera antes de abrir un túnel nuevo tras una caída
-TUNNEL_URL_TIMEOUT = 60       # s para que cloudflared entregue la URL
+NET_CHECK = 5                 # s entre chequeos cuando sí hay red
 STARTUP_MAIL_WAIT = 90        # s máximos esperando el túnel antes de mandar el correo de arranque
 SERVICE = False
 STOPPING = False
@@ -150,6 +146,18 @@ def load_config():
         pass
     return cfg
 
+def tunnel_settings():
+    cfg = load_config()
+    t = cfg.get('tunnel', {})
+    return {
+        'check_interval': max(15, int(t.get('check_interval', 600))),
+        'network_timeout': max(5, int(t.get('network_timeout', 30))),
+        'retry_delay': max(5, int(t.get('retry_delay', 30))),
+        'url_timeout': max(15, int(t.get('url_timeout', 60))),
+        'check_attempts': max(1, int(t.get('check_attempts', 5))),
+        'recreate_mode': 'new' if t.get('recreate_mode', 'new') not in ('new', 'rescue') else t.get('recreate_mode', 'new'),
+        'auto_close_on_loss': bool(t.get('auto_close_on_loss', True)),
+    }
 
 def cfg_mtime():
     try:
@@ -621,68 +629,91 @@ class Supervisor:
 
     def manage_tunnel(self):
         t, port = self.tunnel, self.cfg['port']
+        cfg_tunnel = self.cfg.get('tunnel', {})
+        settings = tunnel_settings()
+
         if not self.tunnel_wanted():
             if t.proc:
                 log('Túnel desactivado desde la configuración. Cerrándolo.', 'INFO')
                 t.stop()
             self.set_state('waiting_setup' if not self.cfg.get('setup_done') else 'off')
             return
+
         if not self.internet:
-            if t.proc:
+            if cfg_tunnel.get('auto_close_on_loss', True) and t.proc:
                 log('Se perdió la red: se cierra el túnel y se abrirá uno nuevo al volver.', 'WARN')
                 t.stop()
             self.next_tunnel_try = 0
             self.set_state('no_internet')
             return
-        if t.proc and not t.alive:                      # cloudflared murió solo
+
+        if t.proc and not t.alive:
             log(f'cloudflared se cerró (código {t.exit_code()}). Se abrirá uno nuevo.', 'WARN')
             t.stop()
-            self.next_tunnel_try = time.time() + TUNNEL_RESTART_DELAY
+            self.next_tunnel_try = time.time() + max(5, settings['retry_delay'])
+
         if t.alive and t.url:
             if self.state != 'active':
-                self.last_check = time.time()           # los 10 min cuentan desde que el túnel quedó activo
+                self.last_check = time.time()
             self.set_state('active')
             return
-        if t.alive:                                     # esperando la URL
+
+        if t.alive:
             self.set_state('starting')
-            if time.time() - t.started > TUNNEL_URL_TIMEOUT:
+            if time.time() - t.started > settings['url_timeout']:
                 log('cloudflared no entregó una URL a tiempo. Reintentando.', 'WARN')
                 t.stop()
-                self.next_tunnel_try = time.time() + TUNNEL_RESTART_DELAY
+                self.next_tunnel_try = time.time() + max(5, settings['retry_delay'])
             return
+
         if time.time() < self.next_tunnel_try:
             return
+
         if not server_ok(port):
             self.set_state('starting')
             return
+
         if not ensure_cloudflared():
             self.set_state('cloudflared_missing')
             self.next_tunnel_try = time.time() + 120
             return
+
         self.set_state('starting')
         t.start(port)
-        self.next_tunnel_try = time.time() + TUNNEL_RESTART_DELAY
+        self.next_tunnel_try = time.time() + max(5, settings['retry_delay'])
 
     def verify_tunnel(self):
-        """Cada 10 min hace ping (GET /health) al túnel; si no responde lo apaga y abre otro."""
+        """Comprueba el túnel periódicamente y decide si lo rescata o lo recrea."""
         t = self.tunnel
-        if not (t.alive and t.url) or time.time() - self.last_check < TUNNEL_CHECK_INTERVAL:
+        settings = tunnel_settings()
+        interval = max(15, settings['check_interval'])
+        attempts = max(1, settings['check_attempts'])
+
+        if not (t.alive and t.url) or time.time() - self.last_check < interval:
             return
+
         self.last_check = time.time()
+
         if not self.internet:
-            return                                      # sin red ya se rehace el túnel al volver
+            return
+
         if not server_ok(self.cfg['port']):
             log('Ping al túnel omitido: el servidor local no responde.', 'WARN')
             return
-        log(f'Ping al túnel ({TUNNEL_CHECK_INTERVAL // 60} min): {t.url}', 'INFO')
-        if tunnel_responds(t.url, TUNNEL_CHECK_ATTEMPTS):
+
+        log(f'Ping al túnel ({interval // 60} min): {t.url}', 'INFO')
+
+        if tunnel_responds(t.url, attempts):
             log('El túnel respondió.', 'OK')
-        elif not self.internet:
-            log('Ping fallido por falta de red; se reintentará al volver.', 'WARN')
         else:
-            log('El túnel NO respondió. Se apaga y se abre uno nuevo.', 'ERROR')
-            t.stop()
-            self.next_tunnel_try = 0
+            mode = settings['recreate_mode']
+            if mode == 'rescue':
+                log('El túnel NO respondió. Se intenta rescatar con espera adicional antes de regenerarlo.', 'WARN')
+                self.next_tunnel_try = time.time() + max(5, settings['retry_delay'])
+            else:
+                log('El túnel NO respondió. Se apaga y se abre uno nuevo.', 'ERROR')
+                t.stop()
+                self.next_tunnel_try = 0
 
     def handle_command(self):
         try:

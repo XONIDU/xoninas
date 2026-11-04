@@ -48,12 +48,81 @@
       <form method="post" action="{{ url_for('admin_save', section='tunnel') }}">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <div class="switch-row">
-          <div class="txt"><strong>Activar el túnel por defecto</strong>
-            <span class="hint">Cuando está activo, start.py abre el túnel al iniciar y lo reabre si se cae o vuelve la conexión. Requiere <code>cloudflared</code>.</span></div>
+          <div class="txt">
+            <strong>Activar el túnel por defecto</strong>
+            <span class="hint">Cuando está activo, start.py abre el túnel al iniciar y lo reabre si se cae o vuelve la conexión. Requiere <code>cloudflared</code>.</span>
+          </div>
           <label class="switch"><input type="checkbox" name="tunnel_enabled" {{ 'checked' if cfg.tunnel.enabled }}><i></i></label>
         </div>
+
+        <div class="row" style="margin-top:14px">
+          <div class="field">
+            <label for="tunnel_check_interval">
+              Intervalo de comprobación
+              <span class="help-mark" title="Cada cuántos segundos revisa si el túnel responde y si la red sigue funcionando.">?</span>
+            </label>
+            <input id="tunnel_check_interval" type="number" min="15" step="5" name="tunnel_check_interval" value="{{ cfg.tunnel.check_interval }}">
+          </div>
+
+          <div class="field">
+            <label for="tunnel_retry_delay">
+              Espera antes de reintentar
+              <span class="help-mark" title="Tiempo a esperar antes de abrir un túnel nuevo o volver a probar después de un fallo.">?</span>
+            </label>
+            <input id="tunnel_retry_delay" type="number" min="5" step="5" name="tunnel_retry_delay" value="{{ cfg.tunnel.retry_delay }}">
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="tunnel_network_timeout">
+              Espera tras pérdida de Wi‑Fi
+              <span class="help-mark" title="Tras perder la red, cuanto tiempo se espera antes de considerar que el túnel está caído o de reintentar la recuperación.">?</span>
+            </label>
+            <input id="tunnel_network_timeout" type="number" min="5" step="5" name="tunnel_network_timeout" value="{{ cfg.tunnel.network_timeout }}">
+          </div>
+
+          <div class="field">
+            <label for="tunnel_url_timeout">
+              Tiempo máximo para obtener URL
+              <span class="help-mark" title="Cuánto tiempo espera cloudflared para devolver la URL del túnel antes de tratarlo como fallo y volver a intentarlo.">?</span>
+            </label>
+            <input id="tunnel_url_timeout" type="number" min="15" step="5" name="tunnel_url_timeout" value="{{ cfg.tunnel.url_timeout }}">
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="tunnel_check_attempts">
+              Reintentos de salud
+              <span class="help-mark" title="Número de comprobaciones HTTP /health que hace antes de declarar que el túnel no responde.">?</span>
+            </label>
+            <input id="tunnel_check_attempts" type="number" min="1" max="20" name="tunnel_check_attempts" value="{{ cfg.tunnel.check_attempts }}">
+          </div>
+
+          <div class="field">
+            <label for="tunnel_recreate_mode">
+              Política al fallar
+              <span class="help-mark" title="new = cerrar y crear uno nuevo. rescue = esperar reintentar antes de cerrar.">?</span>
+            </label>
+            <select id="tunnel_recreate_mode" name="tunnel_recreate_mode">
+              <option value="new" {{ 'selected' if cfg.tunnel.recreate_mode == 'new' }}>Cerrar y generar uno nuevo</option>
+              <option value="rescue" {{ 'selected' if cfg.tunnel.recreate_mode == 'rescue' }}>Intentar rescatar antes de cerrar</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="switch-row">
+          <div class="txt">
+            <strong>Cerrar túnel al perder Wi‑Fi</strong>
+            <span class="hint">Si se corta la conexión, XONINAS puede cerrar inmediatamente el túnel y regenerarlo al recuperar la red.</span>
+          </div>
+          <label class="switch"><input type="checkbox" name="tunnel_auto_close_on_loss" {{ 'checked' if cfg.tunnel.auto_close_on_loss }}><i></i></label>
+        </div>
+
         <div class="actions"><button class="btn btn-primary" type="submit">Guardar</button></div>
       </form>
+
       <form method="post" action="{{ url_for('admin_tunnel_restart') }}" style="margin-top:12px" data-confirm="Se cerrará el túnel actual y la dirección cambiará. ¿Continuar?">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <button class="btn" type="submit">Generar un túnel nuevo</button>

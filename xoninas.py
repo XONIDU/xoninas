@@ -57,7 +57,16 @@ DEFAULT_CONFIG = {
     'host': '0.0.0.0',
     'port': 5000,
     'theme_default': 'dark',            # dark | light | auto
-    'tunnel': {'enabled': True},
+    'tunnel': {
+        'enabled': True,
+        'check_interval': 600,          # segundos entre comprobaciones del túnel
+        'network_timeout': 30,          # segundos de espera tras perder la red
+        'retry_delay': 30,              # segundos antes de reintentar al fallar
+        'url_timeout': 60,              # segundos para esperar una URL de cloudflared
+        'check_attempts': 5,            # intentos de health-check antes de regenerar
+        'recreate_mode': 'new',         # 'new' = cerrar y abrir nuevo / 'rescue' = intentar rescatar
+        'auto_close_on_loss': True,     # cerrar túnel si se pierde la Wi‑Fi
+    },
     'autostart': False,
     'email': {
         'enabled': False,
@@ -69,6 +78,7 @@ DEFAULT_CONFIG = {
     },
     'monitor': {'interval': 600, 'attempts': 5},
 }
+
 
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 USER_RE = re.compile(r'^[A-Za-z0-9._-]{3,32}$')
@@ -477,6 +487,29 @@ def parse_port(value):
         pass
     return None, 'El puerto debe ser un número entre 1024 y 65535.'
 
+def parse_tunnel_form(form, old_cfg):
+    tunnel = dict(old_cfg or {})
+    tunnel['enabled'] = form.get('tunnel_enabled') == 'on'
+    tunnel['check_interval'] = int(form.get('tunnel_check_interval', tunnel.get('check_interval', 600)))
+    tunnel['network_timeout'] = int(form.get('tunnel_network_timeout', tunnel.get('network_timeout', 30)))
+    tunnel['retry_delay'] = int(form.get('tunnel_retry_delay', tunnel.get('retry_delay', 30)))
+    tunnel['url_timeout'] = int(form.get('tunnel_url_timeout', tunnel.get('url_timeout', 60)))
+    tunnel['check_attempts'] = int(form.get('tunnel_check_attempts', tunnel.get('check_attempts', 5)))
+    tunnel['recreate_mode'] = form.get('tunnel_recreate_mode', tunnel.get('recreate_mode', 'new'))
+    if tunnel['recreate_mode'] not in ('new', 'rescue'):
+        tunnel['recreate_mode'] = 'new'
+    tunnel['auto_close_on_loss'] = form.get('tunnel_auto_close_on_loss') == 'on'
+
+    for key, minimum in (
+        ('check_interval', 15),
+        ('network_timeout', 5),
+        ('retry_delay', 5),
+        ('url_timeout', 15),
+        ('check_attempts', 1),
+    ):
+        tunnel[key] = max(minimum, int(tunnel.get(key, minimum)))
+
+    return tunnel
 
 @app.route('/setup', methods=['GET', 'POST'])
 def setup():
@@ -1035,9 +1068,12 @@ def admin_save(section):
         flash('Servidor actualizado.' + (' Reinicia el servidor para aplicar el puerto o la ruta nuevos.' if changed else ''), 'ok')
         anchor = 'servidor'
     elif section == 'tunnel':
-        cfg['tunnel']['enabled'] = f.get('tunnel_enabled') == 'on'
-        flash('Túnel activado: start.py lo abrirá en unos segundos.' if cfg['tunnel']['enabled']
-              else 'Túnel desactivado: start.py lo cerrará en unos segundos.', 'ok')
+        cfg['tunnel'] = parse_tunnel_form(f, cfg.get('tunnel', {}))
+        flash(
+            'Túnel actualizado. Se aplicará en el siguiente ciclo de supervisión.' if cfg['tunnel']['enabled']
+            else 'Túnel desactivado. Se cerrará al siguiente ciclo de supervisión.',
+            'ok'
+        )
         anchor = 'tunel'
     elif section == 'autostart':
         want = f.get('autostart') == 'on'
