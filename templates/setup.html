@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Configuración inicial{% endblock %}
+{% block nav %}{% endblock %}
+{% block body %}
+{% from "_macros.html" import theme_btn %}
+{% set em = {'enabled': values.get('email_enabled', false), 'sender': values.get('email_sender', ''), 'recipients': values.recipients, 'on_start': values.on_start, 'on_tunnel_change': values.on_tunnel_change} %}
+<div class="corner">{{ theme_btn() }}</div>
+<div class="center-page" style="align-items:start"><div class="panel wide">
+  <div class="auth-head">
+    <a class="brand" href="/"><i class="brand-mark"></i><span>XONINAS</span></a>
+    <h1>Configuración inicial</h1>
+    <p class="muted">Completa estos datos una sola vez. Todo se puede cambiar después en Administración.</p>
+  </div>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in msgs %}<div class="flash {{ cat }}" role="alert">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  <form method="post" autocomplete="off">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+    <section class="card">
+      <div class="card-head"><h2>Cuenta de administrador</h2></div>
+      <div class="field"><label for="admin_user">Nombre de usuario</label>
+        <input id="admin_user" type="text" name="admin_user" value="{{ values.get('admin_user','') }}" autocomplete="username" required>
+        <span class="hint">De 3 a 32 caracteres: letras, números, punto, guion o guion bajo.</span></div>
+      <div class="row">
+        <div class="field"><label for="password">Clave</label>
+          <input id="password" type="password" name="password" minlength="8" autocomplete="new-password" required>
+          <span class="hint">Mínimo 8 caracteres.</span></div>
+        <div class="field"><label for="password2">Repite la clave</label>
+          <input id="password2" type="password" name="password2" minlength="8" autocomplete="new-password" required></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Servidor</h2></div>
+      <div class="row">
+        <div class="field" style="flex:3"><label for="storage_path">Carpeta de almacenamiento</label>
+          <input id="storage_path" type="text" name="storage_path" value="{{ values.storage_path }}" required>
+          <span class="hint">Aquí se guardan los archivos. Se crea si no existe.</span></div>
+        <div class="field"><label for="port">Puerto</label>
+          <input id="port" type="number" name="port" min="1024" max="65535" value="{{ values.port }}" required></div>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><strong>Abrir el túnel Cloudflare al iniciar</strong>
+          <span class="hint">Da acceso desde Internet con una dirección https temporal. Se abre solo cuando hay conexión.</span></div>
+        <label class="switch"><input type="checkbox" name="tunnel_enabled" {{ 'checked' if values.tunnel_enabled }}><i></i></label>
+      </div>
+      <div class="switch-row">
+        <div class="txt"><strong>Iniciar el NAS al encender el equipo</strong>
+          <span class="hint">Instala el arranque automático para este usuario del sistema.</span></div>
+        <label class="switch"><input type="checkbox" name="autostart" {{ 'checked' if values.autostart }}><i></i></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Aviso por correo</h2><p>Opcional</p></div>
+      {% set has_pw = false %}
+      {% include "_email_fields.html" %}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Apariencia</h2></div>
+      <div class="segmented" role="radiogroup" aria-label="Tema por defecto">
+        {% for v, l in [('dark','Oscuro'),('light','Claro'),('auto','Según el sistema')] %}
+        <label><input type="radio" name="theme_default" value="{{ v }}" {{ 'checked' if values.theme_default == v }}><span>{{ l }}</span></label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <button class="btn btn-primary btn-block" type="submit" style="padding:12px">Guardar y entrar</button>
+  </form>
+</div></div>
+{% endblock %}

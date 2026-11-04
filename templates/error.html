@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block nav %}{% endblock %}
+{% block body %}
+{% from "_macros.html" import theme_btn %}
+<div class="center-page"><div class="panel card result">
+  <h1>{{ code }}</h1>
+  <p class="muted" style="margin:8px 0 18px">{{ message or 'No se encontró lo que buscabas.' }}</p>
+  <a class="btn btn-primary" href="/">Volver al inicio</a>
+</div></div>
+{% endblock %}

@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Administración{% endblock %}
+{% block content %}
+{% set em = cfg.email %}
+<div class="page-head"><div><h1>Administración</h1><p>Toda la configuración del NAS vive aquí. start.py aplica los cambios solo.</p></div></div>
+
+<div class="admin">
+  <nav class="side" aria-label="Secciones">
+    <a href="#acceso" class="on">Acceso</a>
+    <a href="#tunel">Túnel</a>
+    <a href="#inicio">Inicio automático</a>
+    <a href="#correo">Correo</a>
+    <a href="#servidor">Servidor</a>
+    <a href="#cuenta">Cuenta</a>
+    <a href="#apariencia">Apariencia</a>
+  </nav>
+
+  <div>
+    <section class="card" id="acceso">
+      <div class="card-head"><h2>Acceso al NAS</h2><p id="stateBadge"></p></div>
+      <div class="grid-2">
+        <div class="qr-card">
+          <div class="qr-box" id="qrLocal">{% if has_qr %}<img src="{{ url_for('qr', kind='local') }}" alt="QR de la red local">{% endif %}</div>
+          <div>
+            <strong>Red local</strong>
+            <div class="url-line">{{ urls.lan }}</div>
+            <button class="btn btn-sm" type="button" data-copy="{{ urls.lan }}">Copiar</button>
+          </div>
+        </div>
+        <div class="qr-card">
+          <div id="qrTunnelBox">
+            {% if urls.tunnel and has_qr %}<div class="qr-box"><img src="{{ url_for('qr', kind='tunnel') }}" alt="QR del túnel"></div>
+            {% else %}<div class="qr-empty">Sin túnel activo</div>{% endif %}
+          </div>
+          <div>
+            <strong>Túnel Cloudflare</strong>
+            <div class="url-line" id="tunnelUrl">{{ urls.tunnel or '—' }}</div>
+            <button class="btn btn-sm" type="button" id="copyTunnel" data-copy="{{ urls.tunnel or '' }}" {{ 'disabled' if not urls.tunnel }}>Copiar</button>
+          </div>
+        </div>
+      </div>
+      {% if not has_qr %}<p class="hint" style="margin-top:12px">Para ver los QR instala el paquete <code>qrcode</code> (start.py lo hace al iniciar).</p>{% endif %}
+      {% if not urls.launcher %}<p class="hint" style="margin-top:12px">start.py no está en ejecución: sin él no hay túnel, correo ni reinicio desde la web. Inícialo con <code>python3 start.py</code>.</p>{% endif %}
+    </section>
+
+    <section class="card" id="tunel">
+      <div class="card-head"><h2>Túnel Cloudflare</h2></div>
+      <form method="post" action="{{ url_for('admin_save', section='tunnel') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <div class="switch-row">
+          <div class="txt"><strong>Activar el túnel por defecto</strong>
+            <span class="hint">Cuando está activo, start.py abre el túnel al iniciar y lo reabre si se cae o vuelve la conexión. Requiere <code>cloudflared</code>.</span></div>
+          <label class="switch"><input type="checkbox" name="tunnel_enabled" {{ 'checked' if cfg.tunnel.enabled }}><i></i></label>
+        </div>
+        <div class="actions"><button class="btn btn-primary" type="submit">Guardar</button></div>
+      </form>
+      <form method="post" action="{{ url_for('admin_tunnel_restart') }}" style="margin-top:12px" data-confirm="Se cerrará el túnel actual y la dirección cambiará. ¿Continuar?">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="btn" type="submit">Generar un túnel nuevo</button>
+      </form>
+    </section>
+
+    <section class="card" id="inicio">
+      <div class="card-head"><h2>Inicio automático</h2></div>
+      <form method="post" action="{{ url_for('admin_save', section='autostart') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <div class="switch-row">
+          <div class="txt"><strong>Iniciar XONINAS al encender el equipo</strong>
+            <span class="hint">{% if system == 'Linux' %}Crea un servicio de usuario de systemd (o un arranque de escritorio si no está disponible).{% elif system == 'Windows' %}Añade un acceso en la carpeta Inicio de Windows.{% else %}Crea un LaunchAgent de macOS.{% endif %}</span></div>
+          <label class="switch"><input type="checkbox" name="autostart" {{ 'checked' if cfg.autostart }}><i></i></label>
+        </div>
+        <div class="actions"><button class="btn btn-primary" type="submit">Aplicar</button></div>
+      </form>
+    </section>
+
+    <section class="card" id="correo">
+      <div class="card-head"><h2>Avisos por correo</h2></div>
+      <form method="post" action="{{ url_for('admin_save', section='email') }}" autocomplete="off">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        {% include "_email_fields.html" %}
+        <div class="actions" style="margin-top:8px">
+          <button class="btn btn-primary" type="submit">Guardar</button>
+          <button class="btn" type="submit" name="action" value="test">Guardar y enviar prueba</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" id="servidor">
+      <div class="card-head"><h2>Servidor</h2></div>
+      <form method="post" action="{{ url_for('admin_save', section='server') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <div class="row">
+          <div class="field" style="flex:3"><label for="storage_path">Carpeta de almacenamiento</label>
+            <input id="storage_path" type="text" name="storage_path" value="{{ cfg.storage_path }}" required></div>
+          <div class="field"><label for="port">Puerto</label>
+            <input id="port" type="number" name="port" min="1024" max="65535" value="{{ cfg.port }}" required></div>
+        </div>
+        <p class="hint" style="margin-bottom:12px">Los cambios de ruta o puerto se aplican al reiniciar el servidor.</p>
+        <div class="actions"><button class="btn btn-primary" type="submit">Guardar</button></div>
+      </form>
+      <form method="post" action="{{ url_for('admin_server_restart') }}" style="margin-top:12px" data-confirm="El servidor se reiniciará unos segundos. ¿Continuar?">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="btn" type="submit" {{ 'disabled' if not supervised }}>Reiniciar servidor</button>
+        {% if not supervised %}<span class="hint">Disponible cuando se inicia con start.py.</span>{% endif %}
+      </form>
+    </section>
+
+    <section class="card" id="cuenta">
+      <div class="card-head"><h2>Cuenta</h2></div>
+      <form method="post" action="{{ url_for('admin_save', section='account') }}" autocomplete="off">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <div class="row">
+          <div class="field"><label for="new_user">Usuario</label><input id="new_user" type="text" name="new_user" value="{{ cfg.admin_user }}"></div>
+          <div class="field"><label for="current_password">Clave actual</label><input id="current_password" type="password" name="current_password" autocomplete="current-password" required></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="new_password">Clave nueva</label><input id="new_password" type="password" name="new_password" autocomplete="new-password" placeholder="Vacía = no cambiar"></div>
+          <div class="field"><label for="new_password2">Repite la clave nueva</label><input id="new_password2" type="password" name="new_password2" autocomplete="new-password"></div>
+        </div>
+        <div class="actions"><button class="btn btn-primary" type="submit">Actualizar cuenta</button></div>
+      </form>
+    </section>
+
+    <section class="card" id="apariencia">
+      <div class="card-head"><h2>Apariencia</h2><p>Cada persona también puede alternar el tema con el botón de la barra superior</p></div>
+      <form method="post" action="{{ url_for('admin_save', section='appearance') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <div class="segmented" role="radiogroup" aria-label="Tema por defecto" style="margin-bottom:14px">
+          {% for v, l in [('dark','Oscuro'),('light','Claro'),('auto','Según el sistema')] %}
+          <label><input type="radio" name="theme_default" value="{{ v }}" {{ 'checked' if cfg.theme_default == v }}><span>{{ l }}</span></label>
+          {% endfor %}
+        </div>
+        <div class="actions"><button class="btn btn-primary" type="submit">Guardar</button></div>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var labels = {active: ['Túnel activo', 'green'], starting: ['Abriendo túnel', 'purple'], off: ['Túnel desactivado', ''],
+    no_internet: ['Sin Internet', 'red'], cloudflared_missing: ['Falta cloudflared', 'red'], waiting_setup: ['Pendiente de configuración', ''], unknown: ['start.py no responde', '']};
+  var last = {{ (urls.tunnel or '')|tojson }};
+  function paint(d) {
+    var l = labels[d.tunnel_state] || labels.unknown;
+    document.getElementById('stateBadge').innerHTML = '<span class="badge ' + l[1] + '"><i class="dot"></i>' + l[0] + '</span>';
+    var url = d.tunnel || '';
+    if (url !== last) {
+      last = url;
+      document.getElementById('tunnelUrl').textContent = url || '—';
+      var c = document.getElementById('copyTunnel'); c.dataset.copy = url; c.disabled = !url;
+      document.getElementById('qrTunnelBox').innerHTML = url
+        ? '<div class="qr-box"><img src="/qr/tunnel.svg?t=' + Date.now() + '" alt="QR del túnel"></div>' : '<div class="qr-empty">Sin túnel activo</div>';
+    }
+  }
+  function poll() { fetch('/admin/status', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(paint).catch(function () {}); }
+  poll(); setInterval(poll, 5000);
+  var links = document.querySelectorAll('.side a');
+  function mark() { var h = location.hash || '#acceso'; links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === h); }); }
+  window.addEventListener('hashchange', mark); mark();
+})();
+</script>
+{% endblock %}

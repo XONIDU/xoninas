@@ -1,475 +1,127 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XONINAS · Impresión Remota</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #000;
-            font-family: 'Segoe UI', system-ui;
-            color: #0f0;
-            padding: 2rem;
-        }
-        .container { max-width: 1200px; margin: 0 auto; }
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #6f2da8;
-            padding-bottom: 1rem;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-        h1 { color: #6f2da8; }
-        .back {
-            background: #6f2da8;
-            padding: 0.5rem 1rem;
-            border-radius: 40px;
-            text-decoration: none;
-            color: white;
-            transition: 0.2s;
-        }
-        .back:hover { background: #8a4bcb; }
-        .card {
-            background: #0a0a0a;
-            border: 1px solid #6f2da8;
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 20px;
-        }
-        .card h2 {
-            color: #00ff88;
-            margin-bottom: 15px;
-            border-left: 4px solid #6f2da8;
-            padding-left: 15px;
-        }
-        .printer-select {
-            background: #111;
-            border: 1px solid #6f2da8;
-            color: #0f0;
-            padding: 10px 15px;
-            border-radius: 40px;
-            width: 100%;
-            max-width: 100%;
-            font-size: 1rem;
-            margin: 10px 0;
-        }
-        .printer-select:focus { outline: none; border-color: #00ff88; }
-        .btn-print {
-            background: #00aa55;
-            color: #000;
-            border: none;
-            padding: 10px 25px;
-            border-radius: 40px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: 0.2s;
-        }
-        .btn-print:hover {
-            background: #00ff88;
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
-        }
-        .btn-bn {
-            background: #6f2da8;
-            color: white;
-            border: none;
-            padding: 10px 25px;
-            border-radius: 40px;
-            cursor: pointer;
-            transition: 0.2s;
-            font-weight: bold;
-        }
-        .btn-bn:hover { background: #8a4bcb; }
-        .btn-bn.active {
-            background: #00ff88;
-            color: #000;
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
-        }
-        .btn-secondary {
-            background: #6f2da8;
-            color: white;
-            border: none;
-            padding: 10px 25px;
-            border-radius: 40px;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .btn-secondary:hover { background: #8a4bcb; }
-        .printers-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin: 10px 0;
-        }
-        .printer-chip {
-            background: #111;
-            border: 1px solid #2a2a2a;
-            border-radius: 30px;
-            padding: 6px 15px;
-            cursor: pointer;
-            transition: 0.2s;
-            font-size: 0.9rem;
-        }
-        .printer-chip:hover { border-color: #6f2da8; }
-        .printer-chip.active {
-            border-color: #00ff88;
-            background: rgba(0, 255, 136, 0.05);
-        }
-        .qr-section {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        .qr-section img {
-            background: #000;
-            border: 2px solid #6f2da8;
-            border-radius: 12px;
-            padding: 10px;
-            max-width: 150px;
-        }
-        .file-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 10px;
-            max-height: 500px;
-            overflow-y: auto;
-            padding-right: 5px;
-        }
-        .file-item {
-            background: #111;
-            border: 1px solid #2a2a2a;
-            border-radius: 12px;
-            padding: 12px;
-            transition: 0.2s;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .file-item:hover {
-            border-color: #6f2da8;
-        }
-        .file-item .file-info {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .file-item .file-name {
-            color: #0f0;
-            font-size: 0.85rem;
-            word-break: break-all;
-            flex: 1;
-        }
-        .file-item .file-folder {
-            color: #6f2da8;
-            font-size: 0.7rem;
-        }
-        .file-item .file-actions {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-            margin-top: 4px;
-        }
-        .file-item .file-actions form { display: inline; }
-        .file-item .btn-sm {
-            padding: 4px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 0.7rem;
-            border: none;
-            transition: 0.2s;
-        }
-        .file-item .btn-sm.color {
-            background: #00aa55;
-            color: #000;
-        }
-        .file-item .btn-sm.color:hover { background: #00ff88; }
-        .file-item .btn-sm.bn {
-            background: #6f2da8;
-            color: #fff;
-        }
-        .file-item .btn-sm.bn:hover { background: #8a4bcb; }
-        .file-item .btn-sm.bn.active-bn {
-            background: #00ff88;
-            color: #000;
-        }
-        .file-item .file-size {
-            color: #666;
-            font-size: 0.7rem;
-        }
-        .file-item .not-printable {
-            color: #666;
-            font-size: 0.7rem;
-        }
-        .text-area {
-            width: 100%;
-            background: #111;
-            border: 1px solid #6f2da8;
-            color: #0f0;
-            padding: 15px;
-            border-radius: 12px;
-            font-family: monospace;
-            min-height: 100px;
-            resize: vertical;
-        }
-        .text-area:focus { outline: none; border-color: #00ff88; }
-        .btn-row {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
-        .upload-form {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .upload-form input[type="file"] {
-            flex: 1;
-            background: #111;
-            border: 1px solid #6f2da8;
-            border-radius: 40px;
-            padding: 10px;
-            color: #0f0;
-            min-width: 200px;
-        }
-        .search-box {
-            width: 100%;
-            padding: 8px 15px;
-            background: #111;
-            border: 1px solid #6f2da8;
-            border-radius: 40px;
-            color: #0f0;
-            margin-bottom: 10px;
-            font-size: 0.9rem;
-        }
-        .search-box:focus { outline: none; border-color: #00ff88; }
-        .status-msg {
-            margin-top: 15px;
-            padding: 10px 15px;
-            border-radius: 10px;
-            display: none;
-        }
-        .status-msg.success {
-            display: block;
-            background: rgba(0, 170, 85, 0.2);
-            border: 1px solid #00aa55;
-            color: #00ff88;
-        }
-        .status-msg.error {
-            display: block;
-            background: rgba(255, 68, 68, 0.2);
-            border: 1px solid #ff4444;
-            color: #ff6666;
-        }
-        .status-msg.info {
-            display: block;
-            background: rgba(111, 45, 168, 0.2);
-            border: 1px solid #6f2da8;
-            color: #c084fc;
-        }
-        @media (max-width: 768px) {
-            body { padding: 1rem; }
-            .file-grid { grid-template-columns: 1fr; }
-            .qr-section { flex-direction: column; text-align: center; }
-            .upload-form { flex-direction: column; }
-        }
-    </style>
-</head>
-<body>
-<div class="container">
-    <header>
-        <h1>🖨️ Impresión Remota</h1>
-        <div>
-            <a href="/print/refresh" class="btn-secondary" style="text-decoration:none; margin-right:10px;">↻ Actualizar</a>
-            <a href="/" class="back">← Volver al NAS</a>
-        </div>
-    </header>
-
-    <!-- QR -->
-    <div class="card">
-        <h2>📱 Acceso rápido</h2>
-        <div class="qr-section">
-            {% if qr_image %}
-                <img src="{{ qr_image }}" alt="QR Code">
-                <div>
-                    <strong>Escanea este QR</strong> desde tu móvil para<br>
-                    acceder a la página de impresión.
-                    <br><br>
-                    <span style="color:#666; font-size:0.7rem;">URL: {{ qr_url }}</span>
-                </div>
-            {% else %}
-                <div style="color:#666;">Instala qrcode: <code>pip install qrcode[pil]</code></div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Impresora -->
-    <div class="card">
-        <h2>🖨️ Seleccionar impresora</h2>
-        <select id="printerSelect" class="printer-select">
-            <option value="">-- Selecciona una impresora --</option>
-            {% for p in printers %}
-            <option value="{{ p.name }}" {% if p.default %}selected{% endif %}>
-                {{ p.name }}{% if p.default %} (por defecto){% endif %}
-            </option>
-            {% endfor %}
-        </select>
-        <div class="printers-grid">
-            {% for p in printers %}
-            <div class="printer-chip {% if p.default %}active{% endif %}" onclick="selectPrinter('{{ p.name }}')">
-                {{ p.name }}
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- Archivos del NAS -->
-    <div class="card">
-        <h2>📁 Archivos del NAS</h2>
-        <input type="text" class="search-box" id="searchFiles" placeholder="🔍 Buscar archivo..." oninput="filterFiles()">
-        <div class="file-grid" id="fileGrid">
-            {% for file in files %}
-            <div class="file-item" data-name="{{ file.name|lower }}">
-                <div class="file-info">
-                    <span>{{ file.icon if file.icon else '📄' }}</span>
-                    <span class="file-name">{{ file.name }}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
-                    <span class="file-folder">📂 {{ file.folder }}</span>
-                    <span class="file-size">{{ file.size_formatted }}</span>
-                </div>
-                <div class="file-actions">
-                    {% if file.printable %}
-                        <form method="POST" action="/print/file" style="display:inline;">
-                            <input type="hidden" name="folder_name" value="{{ file.folder }}">
-                            <input type="hidden" name="filename" value="{{ file.name }}">
-                            <input type="hidden" name="printer_name" class="printer-input" value="">
-                            <input type="hidden" name="grayscale" value="false">
-                            <button type="submit" class="btn-sm color">🖨️ Color</button>
-                        </form>
-                        <form method="POST" action="/print/file" style="display:inline;">
-                            <input type="hidden" name="folder_name" value="{{ file.folder }}">
-                            <input type="hidden" name="filename" value="{{ file.name }}">
-                            <input type="hidden" name="printer_name" class="printer-input" value="">
-                            <input type="hidden" name="grayscale" value="true">
-                            <button type="submit" class="btn-sm bn">⚫ B/N</button>
-                        </form>
-                    {% else %}
-                        <span class="not-printable">No imprimible</span>
-                    {% endif %}
-                </div>
-            </div>
-            {% else %}
-            <div style="color:#666; grid-column:1/-1; text-align:center; padding:20px;">
-                No hay archivos en el NAS. Sube algunos desde las carpetas.
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- Imprimir texto -->
-    <div class="card">
-        <h2>✏️ Imprimir texto</h2>
-        <form method="POST" action="/print/text">
-            <input type="hidden" name="printer_name" id="printTextPrinter">
-            <textarea name="text" class="text-area" placeholder="Escribe el texto que quieres imprimir..."></textarea>
-            <div class="btn-row">
-                <button type="submit" class="btn-print">🖨️ Imprimir texto</button>
-            </div>
-        </form>
-    </div>
-
-    <!-- Subir e imprimir -->
-    <div class="card">
-        <h2>📤 Subir e imprimir</h2>
-        <form method="POST" action="/print/upload" enctype="multipart/form-data" class="upload-form">
-            <input type="hidden" name="printer_name" id="uploadPrinter">
-            <input type="hidden" name="grayscale" id="uploadGrayscale" value="false">
-            <input type="file" name="file" accept=".pdf,.txt,.doc,.docx,.jpg,.jpeg,.png,.gif,.bmp" required>
-            <button type="submit" class="btn-print">⬆ Subir e imprimir</button>
-            <button type="button" class="btn-bn" id="toggleBnBtn" onclick="toggleGrayscale()">⚫ B/N</button>
-        </form>
-    </div>
-
-    <!-- Status -->
-    <div id="statusContainer"></div>
+{% extends "base.html" %}
+{% block title %}Impresión{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Impresión remota</h1><p>Imprime archivos del NAS, texto o un archivo subido desde este dispositivo</p></div>
+  <a class="btn" href="{{ url_for('print_refresh') }}">Actualizar impresoras</a>
 </div>
 
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head"><h2>Impresora</h2></div>
+    {% if printers %}
+    <div class="field"><label for="printer">Destino</label>
+      <select id="printer">
+        {% for p in printers %}<option value="{{ p.name }}" {{ 'selected' if p.default }}>{{ p.name }}{{ ' (predeterminada)' if p.default }}{{ ' · ' ~ p.state if p.state == 'deshabilitada' }}</option>{% endfor %}
+      </select></div>
+    {% else %}
+    <div class="empty" style="padding:14px 0"><strong>No se detectaron impresoras</strong>Configura una en CUPS (localhost:631) y pulsa «Actualizar impresoras».</div>
+    <select id="printer" hidden><option value=""></option></select>
+    {% endif %}
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Acceso desde el móvil</h2></div>
+    <div class="qr-card" style="padding:0;border:0;background:none">
+      <div class="qr-box"><img src="{{ url_for('qr', kind='print') }}" alt="Código QR de la página de impresión" onerror="this.parentNode.innerHTML='<span class=&quot;small muted&quot;>Instala qrcode</span>'"></div>
+      <div class="small muted">Escanéalo para abrir esta página de impresión{{ ' desde cualquier lugar (túnel)' if urls.tunnel else ' dentro de tu red local' }}.</div>
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>Opciones de impresión</h2><p>Se aplican a todo lo que envíes desde esta página</p></div>
+  <div class="opts" id="opts">
+    <div class="field"><label for="copies">Copias</label><input id="copies" type="number" min="1" max="99" value="1"></div>
+    <div class="field"><label for="pages">Páginas</label><input id="pages" type="text" placeholder="Todas · 1-3,5"><span class="hint">Ejemplo: 1-2, 2-5 o 1,4,7</span></div>
+    <div class="field"><label for="parity">Selección</label>
+      <select id="parity"><option value="all">Todas</option><option value="odd">Solo impares</option><option value="even">Solo pares</option></select></div>
+    <div class="field"><label for="color">Color</label>
+      <select id="color"><option value="false">Color</option><option value="true">Blanco y negro</option></select></div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Archivos del NAS</h2>
+    <p>{{ files|length }} archivo(s){% if locked %} · {{ locked }} carpeta(s) protegida(s) sin abrir{% endif %}</p></div>
+  <div class="field"><input type="text" id="search" placeholder="Buscar por nombre o carpeta" aria-label="Buscar archivo"></div>
+  <div class="files" id="files">
+    {% for f in files %}
+    <div class="file" data-q="{{ (f.name ~ ' ' ~ f.folder)|lower }}">
+      <div class="file-name">{{ f.name }}</div>
+      <div class="file-meta"><span>{{ f.folder }}</span><span><span class="ext">{{ f.ext or '—' }}</span> {{ f.size_formatted }}</span></div>
+      {% if f.printable %}
+      <div class="actions"><button type="button" class="btn btn-primary btn-sm" data-folder="{{ f.folder }}" data-file="{{ f.rel }}" data-name="{{ f.name }}">Imprimir</button></div>
+      {% else %}<span class="small muted">Formato no imprimible</span>{% endif %}
+    </div>
+    {% else %}
+    <div class="empty" style="grid-column:1/-1"><strong>No hay archivos disponibles</strong>Sube archivos a una carpeta o desbloquea las protegidas.</div>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head"><h2>Subir e imprimir</h2></div>
+    <form id="upForm" method="post" action="{{ url_for('print_upload') }}" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="field"><input type="file" name="file" accept=".pdf,.txt,.jpg,.jpeg,.png,.gif,.bmp,.doc,.docx,.odt,.rtf" required></div>
+      <button class="btn btn-primary" type="submit">Subir e imprimir</button>
+    </form>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Imprimir texto</h2></div>
+    <form id="txForm" method="post" action="{{ url_for('print_text') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="field"><textarea name="text" placeholder="Escribe o pega el texto" required></textarea></div>
+      <button class="btn btn-primary" type="submit">Imprimir texto</button>
+    </form>
+  </section>
+</div>
+
+<div class="overlay" id="overlay" role="alertdialog" aria-live="polite">
+  <div class="overlay-box"><div class="spinner"></div><strong id="ovTitle">Enviando a la impresora</strong>
+    <p class="muted small" id="ovText" style="margin-top:6px">Preparando el documento…</p>
+    <div class="progress" id="ovBar" style="display:none"><i></i></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
-    // ============================================================
-    // FUNCIONES DE IMPRESORA
-    // ============================================================
-    function selectPrinter(name) {
-        if (!name) return;
-        document.getElementById('printerSelect').value = name;
-        document.querySelectorAll('.printer-chip').forEach(c => c.classList.remove('active'));
-        document.querySelectorAll('.printer-chip').forEach(c => {
-            if (c.textContent.trim() === name) c.classList.add('active');
-        });
-        updateAllPrinterInputs();
-    }
-
-    function updateAllPrinterInputs() {
-        const printer = document.getElementById('printerSelect').value;
-        document.querySelectorAll('.printer-input').forEach(input => {
-            input.value = printer;
-        });
-        document.getElementById('printTextPrinter').value = printer;
-        document.getElementById('uploadPrinter').value = printer;
-    }
-
-    function toggleGrayscale() {
-        const input = document.getElementById('uploadGrayscale');
-        const btn = document.getElementById('toggleBnBtn');
-        input.value = input.value === 'true' ? 'false' : 'true';
-        btn.textContent = input.value === 'true' ? '⚫ B/N (activado)' : '⚫ B/N';
-        btn.classList.toggle('active');
-    }
-
-    // ============================================================
-    // BUSCADOR
-    // ============================================================
-    function filterFiles() {
-        const query = document.getElementById('searchFiles').value.toLowerCase();
-        const items = document.querySelectorAll('.file-item');
-        items.forEach(item => {
-            const name = item.getAttribute('data-name') || '';
-            item.style.display = name.includes(query) ? '' : 'none';
-        });
-    }
-
-    // ============================================================
-    // INICIALIZAR
-    // ============================================================
-    document.addEventListener('DOMContentLoaded', function() {
-        let defaultPrinter = document.querySelector('.printer-chip.active');
-        if (!defaultPrinter) {
-            defaultPrinter = document.querySelector('.printer-chip');
-        }
-        if (defaultPrinter) {
-            selectPrinter(defaultPrinter.textContent.trim());
-        }
-
-        document.getElementById('printerSelect').addEventListener('change', function() {
-            const val = this.value;
-            if (val) {
-                document.querySelectorAll('.printer-chip').forEach(c => c.classList.remove('active'));
-                document.querySelectorAll('.printer-chip').forEach(c => {
-                    if (c.textContent.trim() === val) c.classList.add('active');
-                });
-                updateAllPrinterInputs();
-            }
-        });
-
-        setTimeout(updateAllPrinterInputs, 100);
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function opts(form) {
+    var map = {printer_name: $('printer').value, copies: $('copies').value, pages: $('pages').value, parity: $('parity').value, grayscale: $('color').value};
+    Object.keys(map).forEach(function (k) {
+      var i = form.querySelector('input[name="' + k + '"]');
+      if (!i) { i = document.createElement('input'); i.type = 'hidden'; i.name = k; form.appendChild(i); }
+      i.value = map[k];
     });
+  }
+  function busy(name) { $('ovText').textContent = name ? 'Procesando «' + name + '»…' : 'Preparando el documento…'; $('overlay').classList.add('on'); }
+  document.getElementById('files').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-file]'); if (!b) return;
+    var f = document.createElement('form'); f.method = 'post'; f.action = '/print/file';
+    [['_csrf', XN.csrf], ['folder_name', b.dataset.folder], ['filename', b.dataset.file]].forEach(function (p) {
+      var i = document.createElement('input'); i.type = 'hidden'; i.name = p[0]; i.value = p[1]; f.appendChild(i);
+    });
+    opts(f); document.body.appendChild(f); busy(b.dataset.name); f.submit();
+  });
+  /* Subida con barra de progreso real, luego se muestra la página de resultado */
+  $('upForm').addEventListener('submit', function (e) {
+    e.preventDefault(); opts(this);
+    var xhr = new XMLHttpRequest(); xhr.open('POST', this.action);
+    busy(this.querySelector('input[type=file]').files[0].name);
+    $('ovBar').style.display = 'block';
+    xhr.upload.onprogress = function (ev) { if (ev.lengthComputable) { $('ovBar').firstElementChild.style.width = (ev.loaded / ev.total * 100) + '%'; $('ovTitle').textContent = 'Subiendo… ' + Math.round(ev.loaded / ev.total * 100) + '%'; } };
+    xhr.upload.onload = function () { $('ovTitle').textContent = 'Enviando a la impresora'; };
+    xhr.onload = function () { document.open(); document.write(xhr.responseText); document.close(); };
+    xhr.onerror = function () { $('overlay').classList.remove('on'); alert('Se perdió la conexión al subir el archivo.'); };
+    xhr.send(new FormData(this));
+  });
+  $('txForm').addEventListener('submit', function () { opts(this); busy(''); });
+  $('search').addEventListener('input', function () {
+    var q = this.value.toLowerCase();
+    document.querySelectorAll('#files .file').forEach(function (n) { n.style.display = n.dataset.q.indexOf(q) > -1 ? '' : 'none'; });
+  });
+})();
 </script>
-
-</body>
-</html>
+{% endblock %}

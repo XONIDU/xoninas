@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block nav %}{% endblock %}
+{% block body %}
+<div class="center-page"><div class="panel card result">
+  <div class="spinner"></div>
+  <h2>Reiniciando el servidor</h2>
+  <p class="muted" style="margin-top:6px">Esta página se recargará sola cuando termine.</p>
+</div></div>
+<script>
+  setTimeout(function poll() {
+    fetch('/health', {cache: 'no-store'}).then(function (r) { if (r.ok) location.href = '/admin'; else throw 0; })
+      .catch(function () { setTimeout(poll, 1500); });
+  }, 3000);
+</script>
+{% endblock %}

@@ -1,0 +1,49 @@
+{# Campos de correo compartidos por setup.html y admin.html. Variables: em (dict), has_pw (bool) #}
+<div class="switch-row">
+  <div class="txt"><strong>Enviar avisos por correo</strong>
+    <span class="hint">Te avisa cuando el NAS enciende y cuando cambia el enlace del túnel.</span></div>
+  <label class="switch"><input type="checkbox" name="email_enabled" data-toggles="email-body" {{ 'checked' if em.enabled }}><i></i></label>
+</div>
+<div id="email-body" class="sub-fields">
+  <div class="row">
+    <div class="field"><label for="email_sender">Correo que envía (Gmail)</label>
+      <input id="email_sender" type="email" name="email_sender" value="{{ em.sender }}" placeholder="tucuenta@gmail.com" autocomplete="off"></div>
+    <div class="field"><label for="app_password">Clave de aplicación (16 caracteres)</label>
+      <input id="app_password" type="password" name="app_password" maxlength="24" autocomplete="new-password"
+             placeholder="{{ 'Guardada · déjalo vacío para conservarla' if has_pw else 'xxxx xxxx xxxx xxxx' }}">
+      <span class="hint">No es tu clave de Gmail. Créala en
+        <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>.</span></div>
+  </div>
+  <ol class="steps">
+    <li>Activa la verificación en dos pasos en tu cuenta de Google (requisito).</li>
+    <li>Abre el enlace de arriba, escribe «XONINAS» como nombre y pulsa Crear.</li>
+    <li>Copia las 16 letras que muestra Google y pégalas aquí.</li>
+  </ol>
+  <div class="field" style="margin-top:14px" data-recipients>
+    <span class="label">Correos que recibirán el aviso</span>
+    <span class="hint">Marca a quién se le envía. Puedes guardar correos sin marcar para usarlos después.</span>
+    <div data-rcpt-list style="margin-top:8px">
+      {% for r in em.recipients %}
+      <div class="rcpt">
+        <input type="checkbox" name="rcpt_active" value="{{ r.address }}" {{ 'checked' if r.active }} aria-label="Enviar a este correo">
+        <input type="email" name="rcpt_addr" value="{{ r.address }}" placeholder="correo@ejemplo.com">
+        <button type="button" class="x" aria-label="Quitar correo">&times;</button>
+      </div>
+      {% endfor %}
+    </div>
+    <template><div class="rcpt">
+      <input type="checkbox" name="rcpt_active" value="" checked aria-label="Enviar a este correo">
+      <input type="email" name="rcpt_addr" placeholder="correo@ejemplo.com">
+      <button type="button" class="x" aria-label="Quitar correo">&times;</button>
+    </div></template>
+    <div><button type="button" class="btn btn-sm" data-rcpt-add>Añadir correo</button></div>
+  </div>
+  <div class="switch-row">
+    <div class="txt"><strong>Al encender el NAS</strong><span class="hint">Un correo cada vez que start.py inicia el servidor.</span></div>
+    <label class="switch"><input type="checkbox" name="on_start" {{ 'checked' if em.on_start }}><i></i></label>
+  </div>
+  <div class="switch-row">
+    <div class="txt"><strong>Cuando cambie el túnel</strong><span class="hint">Los túneles gratuitos cambian de dirección al reconectarse.</span></div>
+    <label class="switch"><input type="checkbox" name="on_tunnel_change" {{ 'checked' if em.on_tunnel_change }}><i></i></label>
+  </div>
+</div>

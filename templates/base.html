@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf" content="{{ csrf_token() }}">
+  <title>{% block title %}XONINAS{% endblock %} · XONINAS</title>
+  <script>
+    (function () {
+      var pref = null, def = {{ theme_default|tojson }};
+      try { pref = localStorage.getItem('xn-theme'); } catch (e) {}
+      var t = pref || def;
+      if (t === 'auto') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+{% from "_macros.html" import theme_btn %}
+<body>
+{% block nav %}
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="{{ url_for('index') }}"><i class="brand-mark"></i><span>XONINAS</span></a>
+    <nav class="nav" aria-label="Principal">
+      {% set ep = request.endpoint or '' %}
+      <a href="{{ url_for('index') }}" class="{{ 'on' if ep in ('index','folder_view','folder_auth') }}">Carpetas</a>
+      <a href="{{ url_for('print_page') }}" class="{{ 'on' if ep.startswith('print') }}">Impresión</a>
+      <a href="{{ url_for('admin') }}" class="{{ 'on' if ep.startswith('admin') }}">Administración</a>
+    </nav>
+    <div class="top-right">
+      <span class="user-chip">{{ current_user }}</span>
+      {{ theme_btn() }}
+      <a class="btn btn-sm" href="{{ url_for('logout') }}">Salir</a>
+    </div>
+  </div>
+</header>
+{% endblock %}
+{% block body %}
+<main class="wrap {% block wrapclass %}{% endblock %}">
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in msgs %}<div class="flash {{ cat }}" role="status">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="footer">XONINAS {{ version }} · Darian Alberto Camacho Salas · <a href="https://github.com/XONIDU/xoninas" target="_blank" rel="noopener">XONIDU</a> · #SomosXONIDU</footer>
+{% endblock %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
