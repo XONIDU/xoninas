@@ -50,7 +50,7 @@
         <div class="switch-row">
           <div class="txt">
             <strong>Activar el túnel por defecto</strong>
-            <span class="hint">Cuando está activo, start.py abre el túnel al iniciar y lo reabre si se cae o vuelve la conexión. Requiere <code>cloudflared</code>.</span>
+            <span class="hint">Cuando está activo, start.py abre el túnel al iniciar y lo reabre si se cae o vuelve la conexión. Si falta <code>cloudflared</code>, start.py lo descarga solo (en Windows usa <code>winget</code> como respaldo).</span>
           </div>
           <label class="switch"><input type="checkbox" name="tunnel_enabled" {{ 'checked' if cfg.tunnel.enabled }}><i></i></label>
         </div>
@@ -138,6 +138,11 @@
             <span class="hint">{% if system == 'Linux' %}Crea un servicio de usuario de systemd (o un arranque de escritorio si no está disponible).{% elif system == 'Windows' %}Añade un acceso en la carpeta Inicio de Windows.{% else %}Crea un LaunchAgent de macOS.{% endif %}</span></div>
           <label class="switch"><input type="checkbox" name="autostart" {{ 'checked' if cfg.autostart }}><i></i></label>
         </div>
+        <div class="switch-row">
+          <div class="txt"><strong>Abrir la web del NAS al iniciar</strong>
+            <span class="hint">Cuando XONINAS arranca, abre esta página en el navegador predeterminado de este equipo. Si lo desactivas, el navegador solo se abre en la configuración inicial.</span></div>
+          <label class="switch"><input type="checkbox" name="open_browser" {{ 'checked' if cfg.open_browser }}><i></i></label>
+        </div>
         <div class="actions"><button class="btn btn-primary" type="submit">Aplicar</button></div>
       </form>
     </section>
@@ -208,7 +213,7 @@
 {% block scripts %}
 <script>
 (function () {
-  var labels = {active: ['Túnel activo', 'green'], starting: ['Abriendo túnel', 'purple'], off: ['Túnel desactivado', ''],
+  var labels = {active: ['Túnel activo', 'green'], starting: ['Abriendo túnel', 'purple'], installing_cloudflared: ['Instalando cloudflared', 'purple'], off: ['Túnel desactivado', ''],
     no_internet: ['Sin Internet', 'red'], cloudflared_missing: ['Falta cloudflared', 'red'], waiting_setup: ['Pendiente de configuración', ''], unknown: ['start.py no responde', '']};
   var last = {{ (urls.tunnel or '')|tojson }};
   function paint(d) {
@@ -225,6 +230,40 @@
   }
   function poll() { fetch('/admin/status', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(paint).catch(function () {}); }
   poll(); setInterval(poll, 5000);
+  // Portapapeles: navigator.clipboard solo existe en HTTPS o localhost. En la red local (http://192.168.x.x)
+  // se usa execCommand('copy'), y como último recurso se muestra el enlace para copiarlo a mano.
+  function legacyCopy(text) {
+    var prev = document.activeElement, ok = false;
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { ta.setSelectionRange(0, text.length); ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    if (prev && prev.focus) { try { prev.focus(); } catch (e) {} }
+    return ok;
+  }
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return legacyCopy(text); });
+    }
+    return Promise.resolve(legacyCopy(text));
+  }
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('[data-copy]') : null;
+    if (!btn) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    var text = btn.dataset.copy || '';
+    if (!text || btn.disabled) return;
+    copyText(text).then(function (ok) {
+      if (!ok) { window.prompt('Copia el enlace (Ctrl+C) y pulsa Enter:', text); return; }
+      var old = btn.dataset.label || btn.textContent;
+      btn.dataset.label = old; btn.textContent = 'Copiado';
+      clearTimeout(btn._t); btn._t = setTimeout(function () { btn.textContent = old; }, 1500);
+    });
+  }, true);
+
   var links = document.querySelectorAll('.side a');
   function mark() { var h = location.hash || '#acceso'; links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === h); }); }
   window.addEventListener('hashchange', mark); mark();

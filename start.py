@@ -11,7 +11,8 @@ Se encarga de todo lo que rodea al servidor web (xoninas.py):
   * envía el correo de aviso al encender el NAS y cuando cambia la URL del túnel
   * instala o quita el inicio automático con el sistema
   * impide que haya dos lanzadores a la vez (bloqueo start.lock)
-  * descarga cloudflared a la carpeta bin/ (sin sudo, sin contraseña)
+  * consigue cloudflared solo: lo descarga a bin/ y, en Windows, usa winget si la descarga falla
+  * abre la web del NAS en el navegador al iniciar (opción activable en /admin)
 
 No tiene datos propios: lee config.json, que se edita en la web (/setup y /admin).
 
@@ -20,6 +21,7 @@ Uso:
   python3 start.py --service            sin limpiar pantalla (inicio automático)
   python3 start.py --autostart on|off|status
   python3 start.py --test-email
+  python3 start.py --install-cloudflared   instala cloudflared y termina
 
 Desarrollado por: Darian Alberto Camacho Salas - XONIDU (#SomosXONIDU)
 """
@@ -56,7 +58,7 @@ LOCK_PATH = BASE_DIR / 'start.lock'
 BIN_DIR = BASE_DIR / 'bin'
 
 DEFAULTS = {
-    'setup_done': False, 'port': 5000, 'tunnel': {'enabled': True}, 'autostart': False,
+    'setup_done': False, 'port': 5000, 'tunnel': {'enabled': True}, 'autostart': False, 'open_browser': False,
     'email': {'enabled': False, 'sender': '', 'app_password': '', 'recipients': [],
               'on_start': True, 'on_tunnel_change': True},
 }
@@ -64,6 +66,8 @@ SMTP_SERVER, SMTP_PORT = 'smtp.gmail.com', 587
 NET_RETRY = 5                 # s entre reintentos cuando NO hay red
 NET_CHECK = 5                 # s entre chequeos cuando sí hay red
 STARTUP_MAIL_WAIT = 90        # s máximos esperando el túnel antes de mandar el correo de arranque
+CLOUDFLARED_RETRY = 600       # s antes de volver a intentar instalar cloudflared si falló
+NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0) if platform.system() == 'Windows' else 0
 SERVICE = False
 STOPPING = False
 
@@ -101,8 +105,9 @@ def log(msg, level='INFO'):
 def pid_alive(pid):
     """True si pid es un start.py vivo (evita falsos positivos por PIDs reciclados)."""
     if platform.system() == 'Windows':
-        out = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], capture_output=True, text=True).stdout
-        return str(pid) in out
+        out = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], capture_output=True, text=True,
+                             creationflags=NO_WINDOW).stdout
+        return str(pid) in out and 'python' in out.lower()
     try:
         os.kill(pid, 0)
     except PermissionError:
@@ -220,10 +225,11 @@ def kill_port(port):
     killed = False
     try:
         if platform.system() == 'Windows':
-            out = subprocess.run(f'netstat -ano | findstr :{port}', capture_output=True, text=True, shell=True).stdout
+            out = subprocess.run(f'netstat -ano | findstr :{port}', capture_output=True, text=True, shell=True,
+                                 creationflags=NO_WINDOW).stdout
             pids = {l.split()[-1] for l in out.splitlines() if 'LISTENING' in l}
             for pid in pids:
-                subprocess.run(['taskkill', '/F', '/PID', pid], capture_output=True)
+                subprocess.run(['taskkill', '/F', '/PID', pid], capture_output=True, creationflags=NO_WINDOW)
                 killed = True
         else:
             pids = set()
@@ -249,6 +255,24 @@ def kill_port(port):
     with socket.socket() as s:
         s.settimeout(1)
         return s.connect_ex(('127.0.0.1', port)) != 0
+
+
+# ============================================================================
+# Navegador
+# ============================================================================
+def open_in_browser(url):
+    """Abre la URL en el navegador predeterminado. En Windows usa explorer.exe para que se abra con el
+    usuario normal aunque start.py corra con permisos de administrador (tarea programada, .bat)."""
+    try:
+        if platform.system() == 'Windows':
+            subprocess.Popen(['explorer.exe', url])
+            return True
+        return bool(webbrowser.open(url))
+    except Exception:                                  # noqa: BLE001
+        try:
+            return bool(webbrowser.open(url))
+        except Exception:                              # noqa: BLE001
+            return False
 
 
 # ============================================================================
@@ -374,7 +398,8 @@ def autostart_paths():
 
 def sh(*cmd):
     try:
-        return subprocess.run(list(cmd), capture_output=True, text=True, timeout=20).returncode == 0
+        return subprocess.run(list(cmd), capture_output=True, text=True, timeout=20,
+                              creationflags=NO_WINDOW).returncode == 0
     except Exception:                                  # noqa: BLE001
         return False
 
@@ -460,44 +485,180 @@ def ensure_dependencies():
     sys.exit(1)
 
 
+def refresh_windows_path():
+    """Tras instalar con winget/MSI, el PATH de este proceso queda viejo: se vuelve a leer del registro."""
+    if platform.system() != 'Windows':
+        return
+    try:
+        import winreg
+        parts = []
+        for root, sub in ((winreg.HKEY_LOCAL_MACHINE, r'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'),
+                          (winreg.HKEY_CURRENT_USER, 'Environment')):
+            try:
+                with winreg.OpenKey(root, sub) as key:
+                    value, _ = winreg.QueryValueEx(key, 'Path')
+                    parts.append(os.path.expandvars(value))
+            except OSError:
+                continue
+        seen, out = set(), []
+        for p in ';'.join(parts + [os.environ.get('PATH', '')]).split(';'):
+            if p and p.lower() not in seen:
+                seen.add(p.lower())
+                out.append(p)
+        os.environ['PATH'] = ';'.join(out)
+    except Exception:                                  # noqa: BLE001
+        pass
+
+
+def windows_cloudflared_candidates():
+    """Sitios donde el MSI y winget dejan cloudflared.exe."""
+    env, cands = os.environ, []
+    for var in ('ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432'):
+        base = env.get(var)
+        if base:
+            cands.append(Path(base) / 'cloudflared' / 'cloudflared.exe')
+    local = env.get('LOCALAPPDATA')
+    if local:
+        winget = Path(local) / 'Microsoft' / 'WinGet'
+        cands.append(winget / 'Links' / 'cloudflared.exe')
+        try:
+            cands += sorted((winget / 'Packages').glob('Cloudflare.cloudflared*/cloudflared.exe'))
+        except OSError:
+            pass
+    return cands
+
+
 def cloudflared_exe():
-    """Prefiere el binario local de bin/; si no existe, usa el del sistema."""
-    local = BIN_DIR / ('cloudflared.exe' if platform.system() == 'Windows' else 'cloudflared')
-    return str(local) if local.exists() else shutil.which('cloudflared')
+    """Busca cloudflared: bin/ del proyecto, PATH y las rutas habituales de cada sistema."""
+    system = platform.system()
+    local = BIN_DIR / ('cloudflared.exe' if system == 'Windows' else 'cloudflared')
+    if local.exists():
+        return str(local)
+    found = shutil.which('cloudflared')
+    if found:
+        return found
+    if system == 'Windows':
+        refresh_windows_path()
+        found = shutil.which('cloudflared')
+        if found:
+            return found
+        for cand in windows_cloudflared_candidates():
+            if cand.exists():
+                return str(cand)
+    else:                                               # un servicio puede no tener estas rutas en el PATH
+        for cand in ('/opt/homebrew/bin/cloudflared', '/usr/local/bin/cloudflared', '/usr/bin/cloudflared'):
+            if os.path.exists(cand):
+                return cand
+    return None
+
+
+def download_cloudflared(name, dest):
+    """Descarga el binario a bin/ (3 intentos). Devuelve (ok, motivo)."""
+    url = f'https://github.com/cloudflare/cloudflared/releases/latest/download/{name}'
+    tmp = dest.with_suffix('.part')
+    why = 'sin detalle'
+    for attempt in range(1, 4):
+        try:
+            BIN_DIR.mkdir(exist_ok=True)
+            req = urllib.request.Request(url, headers={'User-Agent': 'XONINAS-Installer/5'})
+            with urllib.request.urlopen(req, timeout=60) as resp, open(tmp, 'wb') as out:
+                shutil.copyfileobj(resp, out)
+            size = tmp.stat().st_size
+            if size < 5_000_000:
+                raise OSError(f'descarga incompleta ({size} bytes)')
+            with open(tmp, 'rb') as f:
+                magic = f.read(4)
+            if not (magic[:2] == b'MZ' or magic == b'\x7fELF'):
+                raise OSError('el archivo descargado no es un ejecutable')
+            try:
+                tmp.chmod(0o755)
+            except OSError:
+                pass
+            os.replace(tmp, dest)
+            run = subprocess.run([str(dest), '--version'], capture_output=True, timeout=15, creationflags=NO_WINDOW)
+            if run.returncode != 0:
+                dest.unlink(missing_ok=True)
+                return False, 'el binario descargado no funciona en este equipo'
+            return True, ''
+        except Exception as exc:                       # noqa: BLE001
+            why = str(exc)
+            log(f'Descarga de cloudflared, intento {attempt}/3: {why}', 'WARN')
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if attempt < 3:
+                time.sleep(3)
+    return False, why
+
+
+def install_cloudflared_winget():
+    """Respaldo en Windows: winget install Cloudflare.cloudflared. Devuelve (ok, motivo)."""
+    winget = shutil.which('winget')
+    if not winget:
+        local = os.environ.get('LOCALAPPDATA')
+        cand = Path(local) / 'Microsoft' / 'WindowsApps' / 'winget.exe' if local else None
+        if cand and cand.exists():
+            winget = str(cand)
+    if not winget:
+        return False, 'winget no está disponible en este Windows'
+    log('Instalando cloudflared con winget (puede tardar un minuto; si Windows pide permisos, acéptalos)...', 'WARN')
+    cmd = [winget, 'install', '--id', 'Cloudflare.cloudflared', '-e', '--source', 'winget', '--silent',
+           '--accept-package-agreements', '--accept-source-agreements']
+    try:
+        run = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=600,
+                             creationflags=NO_WINDOW)
+    except Exception as exc:                           # noqa: BLE001
+        return False, f'winget falló: {exc}'
+    refresh_windows_path()
+    importlib.invalidate_caches()
+    if cloudflared_exe():
+        return True, ''
+    tail = ((run.stdout or '') + (run.stderr or '')).strip().splitlines()[-1:] or ['sin salida']
+    return False, f'winget terminó con código {run.returncode} y no dejó cloudflared ({tail[0][:120]})'
 
 
 def ensure_cloudflared():
-    """Descarga cloudflared a bin/ si no está. No requiere sudo ni contraseña."""
+    """Deja cloudflared listo sin pedir contraseña de root.
+    Orden: ya instalado -> descarga a bin/ -> winget (Windows) / brew (macOS)."""
     if cloudflared_exe():
         return True
     system, m = platform.system(), platform.machine().lower()
     arch = ('arm64' if m in ('aarch64', 'arm64') else 'arm' if m.startswith('arm')
             else '386' if m in ('i386', 'i686', 'x86') else 'amd64')
-    if system == 'Linux':
-        name, dest = f'cloudflared-linux-{arch}', BIN_DIR / 'cloudflared'
-    elif system == 'Windows':
-        name, dest = f'cloudflared-windows-{arch}.exe', BIN_DIR / 'cloudflared.exe'
-    else:
+    if system in ('Linux', 'Windows'):
+        if system == 'Linux':
+            name, dest = f'cloudflared-linux-{arch}', BIN_DIR / 'cloudflared'
+        else:
+            name, dest = f'cloudflared-windows-{arch}.exe', BIN_DIR / 'cloudflared.exe'
+        log('Descargando cloudflared a la carpeta bin/ (no requiere contraseña)...', 'WARN')
+        ok, why = download_cloudflared(name, dest)
+        if ok:
+            log('cloudflared instalado en bin/.', 'OK')
+            return True
+        log(f'No se pudo descargar cloudflared: {why}', 'WARN')
+        if system == 'Windows':
+            ok, why = install_cloudflared_winget()
+            if ok:
+                log('cloudflared instalado con winget.', 'OK')
+                return True
+            log(f'No se pudo instalar con winget: {why}', 'ERROR')
+            log('Instálalo a mano con:  winget install Cloudflare.cloudflared  y vuelve a iniciar XONINAS.', 'ERROR')
+            return False
+        log('Instala cloudflared con tu gestor de paquetes (Arch: sudo pacman -S cloudflared).', 'ERROR')
+        return False
+    if system == 'Darwin':
+        brew = shutil.which('brew') or next((c for c in ('/opt/homebrew/bin/brew', '/usr/local/bin/brew')
+                                             if os.path.exists(c)), None)
+        if brew:
+            log('Instalando cloudflared con Homebrew...', 'WARN')
+            if sh(brew, 'install', 'cloudflared') and cloudflared_exe():
+                log('cloudflared instalado con Homebrew.', 'OK')
+                return True
         log('En macOS instala cloudflared con: brew install cloudflared', 'ERROR')
         return False
-    log('Descargando cloudflared a la carpeta bin/ (no requiere contraseña)...', 'WARN')
-    try:
-        BIN_DIR.mkdir(exist_ok=True)
-        tmp = dest.with_suffix('.part')
-        urllib.request.urlretrieve(
-            f'https://github.com/cloudflare/cloudflared/releases/latest/download/{name}', tmp)
-        tmp.chmod(0o755)
-        os.replace(tmp, dest)
-        ok = subprocess.run([str(dest), '--version'], capture_output=True, timeout=15).returncode == 0
-        if not ok:
-            dest.unlink(missing_ok=True)
-            log('El cloudflared descargado no funciona en este equipo.', 'ERROR')
-            return False
-        log('cloudflared instalado en bin/.', 'OK')
-        return True
-    except Exception as exc:                           # noqa: BLE001
-        log(f'No se pudo descargar cloudflared: {exc}', 'ERROR')
-        return False
+    log('Sistema no compatible con la instalación automática de cloudflared.', 'ERROR')
+    return False
 
 
 # ============================================================================
@@ -523,7 +684,8 @@ class Tunnel:
         log('Abriendo túnel Cloudflare...', 'INFO')
         self.proc = subprocess.Popen(
             [exe, 'tunnel', '--no-autoupdate', '--protocol', 'http2', '--url', f'http://localhost:{port}'],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding='utf-8', errors='replace', bufsize=1,
+            creationflags=NO_WINDOW)
         threading.Thread(target=self._reader, args=(self.proc,), daemon=True).start()
         return True
 
@@ -569,6 +731,8 @@ class Supervisor:
         self.last_write = 0
         self.last_runtime = None
         self.crashes = []
+        self.cf_thread = None
+        self.cf_failed_at = 0
 
     # --- servidor -----------------------------------------------------------
     def start_server(self):
@@ -622,6 +786,8 @@ class Supervisor:
             msgs = {'no_internet': ('Sin red: reintentando cada %d s.' % NET_RETRY, 'WARN'),
                     'active': ('Túnel activo: %s' % self.tunnel.url, 'OK'),
                     'starting': ('Abriendo el túnel...', 'INFO'),
+                    'installing_cloudflared': ('Instalando cloudflared...', 'INFO'),
+                    'cloudflared_missing': ('No hay cloudflared. Se reintentará en %d min.' % (CLOUDFLARED_RETRY // 60), 'WARN'),
                     'off': ('Túnel desactivado.', 'INFO')}
             if new in msgs:
                 log(*msgs[new])
@@ -673,14 +839,38 @@ class Supervisor:
             self.set_state('starting')
             return
 
-        if not ensure_cloudflared():
-            self.set_state('cloudflared_missing')
-            self.next_tunnel_try = time.time() + 120
+        if not self.cloudflared_ready():
             return
 
         self.set_state('starting')
         t.start(port)
         self.next_tunnel_try = time.time() + max(5, settings['retry_delay'])
+
+    def cloudflared_ready(self):
+        """True si cloudflared está listo. Si falta, lo instala en un hilo para no frenar la supervisión."""
+        if cloudflared_exe():
+            self.cf_failed_at = 0
+            return True
+        if self.cf_thread and self.cf_thread.is_alive():
+            self.set_state('installing_cloudflared')
+            return False
+        if self.cf_failed_at and time.time() - self.cf_failed_at < CLOUDFLARED_RETRY:
+            self.set_state('cloudflared_missing')
+            return False
+        self.set_state('installing_cloudflared')
+        self.cf_thread = threading.Thread(target=self._install_cloudflared, daemon=True)
+        self.cf_thread.start()
+        return False
+
+    def _install_cloudflared(self):
+        ok = False
+        try:
+            ok = ensure_cloudflared()
+        except Exception as exc:                        # noqa: BLE001
+            log(f'Error instalando cloudflared: {exc!r}', 'ERROR')
+        self.cf_failed_at = 0 if ok else time.time()
+        if ok:
+            self.next_tunnel_try = 0
 
     def verify_tunnel(self):
         """Comprueba el túnel periódicamente y decide si lo rescata o lo recrea."""
@@ -739,12 +929,12 @@ class Supervisor:
             print_qrs(lan, url)
             if not self.cfg.get('setup_done'):
                 log(f'Primera vez: abre {local}/setup para crear tu usuario y configurar el NAS.', 'WARN')
-        if not self.cfg.get('setup_done') and not self.browser_opened and not SERVICE:
+        setup_done = bool(self.cfg.get('setup_done'))
+        if not self.browser_opened and (self.cfg.get('open_browser') or (not setup_done and not SERVICE)):
             self.browser_opened = True
-            try:
-                webbrowser.open(f'{local}/setup')
-            except Exception:                          # noqa: BLE001
-                pass
+            target = f'{local}/' if setup_done else f'{local}/setup'
+            if open_in_browser(target):
+                log(f'Abriendo {target} en el navegador.', 'INFO')
         em = self.cfg['email']
         if not (em.get('enabled') and self.cfg.get('setup_done')):
             return
@@ -834,6 +1024,7 @@ def main():
     ap.add_argument('--service', action='store_true')
     ap.add_argument('--autostart', choices=['on', 'off', 'status'])
     ap.add_argument('--test-email', action='store_true')
+    ap.add_argument('--install-cloudflared', action='store_true')
     args = ap.parse_args()
 
     if args.autostart:
@@ -845,6 +1036,10 @@ def main():
         return 0 if ok else 1
     if args.test_email:
         return cli_test_email()
+    if args.install_cloudflared:
+        ok = ensure_cloudflared()
+        print(f'cloudflared listo: {cloudflared_exe()}' if ok else 'No se pudo instalar cloudflared.')
+        return 0 if ok else 1
 
     SERVICE = args.service
     if not SERVICE:

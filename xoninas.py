@@ -68,6 +68,7 @@ DEFAULT_CONFIG = {
         'auto_close_on_loss': True,     # cerrar túnel si se pierde la Wi‑Fi
     },
     'autostart': False,
+    'open_browser': False,
     'email': {
         'enabled': False,
         'sender': '',
@@ -1076,10 +1077,12 @@ def admin_save(section):
         )
         anchor = 'tunel'
     elif section == 'autostart':
-        want = f.get('autostart') == 'on'
-        ok, msg = run_start_cli('--autostart', 'on' if want else 'off')
+        want_autostart = f.get('autostart') == 'on'
+        want_open_browser = f.get('open_browser') == 'on'
+        ok, msg = run_start_cli('--autostart', 'on' if want_autostart else 'off')
         if ok:
-            cfg['autostart'] = want
+            cfg['autostart'] = want_autostart
+            cfg['open_browser'] = want_open_browser
             flash(msg, 'ok')
         else:
             flash(f'No se pudo cambiar el inicio automático: {msg}', 'error')
