@@ -470,7 +470,8 @@ def autostart_set(enable):
 # Dependencias y cloudflared
 # ============================================================================
 def ensure_dependencies():
-    wanted = {'flask': 'flask', 'werkzeug': 'werkzeug', 'waitress': 'waitress', 'qrcode': 'qrcode'}
+    wanted = {'flask': 'flask', 'werkzeug': 'werkzeug', 'waitress': 'waitress',
+              'qrcode': 'qrcode', 'psutil': 'psutil', 'requests': 'requests'}
     missing = [pkg for mod, pkg in wanted.items() if importlib.util.find_spec(mod) is None]
     if not missing:
         return

@@ -35,12 +35,19 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
+from xninas_security import (
+    get_system_stats, check_ddos, es_pais_bloqueado,
+    registrar_fallo_bruteforce, registrar_exito_bruteforce,
+    esta_bloqueado_bruteforce, stats_bruteforce, get_ip_country,
+)
+
 from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
                    request, send_file, session, url_for, Response)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 VERSION = '5.0.0'
-BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / 'config.json'
 RUNTIME_PATH = BASE_DIR / 'runtime.json'      # lo escribe start.py (estado del túnel)
 COMMAND_PATH = BASE_DIR / 'command.json'      # la web le pide cosas a start.py
@@ -78,6 +85,17 @@ DEFAULT_CONFIG = {
         'on_tunnel_change': True,
     },
     'monitor': {'interval': 600, 'attempts': 5},
+    'security': {
+        'enabled': False,
+        'monitor_enabled': True,
+        'ddos_enabled': True,
+        'ddos_threshold': 50,
+        'bruteforce_enabled': True,
+        'geo_block_enabled': False,
+        'geo_block_mode': 'deny',
+        'geo_allow_list': [],
+        'geo_deny_list': [],
+    },
 }
 
 
@@ -251,6 +269,27 @@ def guard():
     ep = request.endpoint
     if ep in (None, 'static', 'health'):
         return None
+
+    ip = request.remote_addr or '?'
+    if ip in ('127.0.0.1', '::1'):
+        ip = request.headers.get('CF-Connecting-IP', ip)
+
+    sec = g.cfg.get('security', {})
+
+    # --- Geobloqueo por países ------------------------------------------------
+    if sec.get('enabled') and sec.get('geo_block_enabled') and ep != 'setup':
+        bloqueado, motivo, pais = es_pais_bloqueado(ip, g.cfg)
+        if bloqueado:
+            abort(403, f'Acceso denegado: {motivo}')
+
+    # --- Detección de posible DDoS -------------------------------------------
+    if sec.get('enabled') and sec.get('ddos_enabled') and ep not in ('static', 'admin_security'):
+        umbral = int(sec.get('ddos_threshold', 50))
+        sospechosas = check_ddos(umbral)
+        for ip_sos, n_con in sospechosas:
+            if ip_sos == ip:
+                abort(429, f'Demasiadas conexiones desde tu IP ({n_con}). Inténtalo más tarde.')
+
     if not g.cfg['setup_done'] and ep != 'setup':
         return redirect(url_for('setup'))
     if request.method == 'POST':
@@ -570,22 +609,30 @@ def login():
     if session.get('user'):
         return redirect(url_for('index'))
     error = None
+    ip = request.remote_addr or '?'
+    if ip in ('127.0.0.1', '::1'):
+        ip = request.headers.get('CF-Connecting-IP', ip)
     if request.method == 'POST':
-        wait = locked_seconds()
-        if wait:
-            error = f'Demasiados intentos. Espera {wait} s e inténtalo otra vez.'
-        else:
+        sec = g.cfg.get('security', {})
+        if sec.get('enabled') and sec.get('bruteforce_enabled'):
+            wait = esta_bloqueado_bruteforce(ip)
+            if wait:
+                error = f'Demasiados intentos fallidos. Espera {wait} s e inténtalo otra vez.'
+        if not error:
             user = request.form.get('username', '').strip()
             pwd = request.form.get('password', '')
             if user == g.cfg['admin_user'] and check_password_hash(g.cfg['admin_hash'], pwd):
-                register_ok()
+                registrar_exito_bruteforce(ip)
                 session.clear()
                 session['user'] = user
                 session.permanent = True
                 nxt = request.args.get('next', '')
                 return redirect(nxt if nxt.startswith('/') and not nxt.startswith('//') else url_for('index'))
-            register_fail()
-            error = 'Usuario o clave incorrectos.'
+            n, until = registrar_fallo_bruteforce(ip)
+            if n >= 5:
+                error = f'Demasiados intentos fallidos. IP bloqueada durante {until} s.'
+            else:
+                error = 'Usuario o clave incorrectos.'
     return render_template('login.html', error=error), (401 if error else 200)
 
 
@@ -1032,6 +1079,59 @@ def admin():
 @login_required
 def admin_status():
     return jsonify(get_urls())
+
+
+@app.get('/admin/security')
+@login_required
+def admin_security():
+    """Panel de monitoreo y seguridad: estado del sistema, DDoS, fuerza bruta, geo."""
+    cfg = copy.deepcopy(g.cfg)
+    cfg['email']['app_password'] = ''
+    cfg['admin_hash'] = ''
+    cfg['secret_key'] = ''
+    sec = cfg.get('security', {})
+
+    stats = get_system_stats() if sec.get('monitor_enabled') else None
+
+    ddos_sospechosas = []
+    if sec.get('ddos_enabled'):
+        umbral = int(sec.get('ddos_threshold', 50))
+        ddos_sospechosas = check_ddos(umbral)
+
+    bf = stats_bruteforce() if sec.get('bruteforce_enabled') else {
+        'ips_sospechosas': 0, 'detalle': []}
+
+    return render_template('security.html', cfg=cfg, sec=sec, stats=stats,
+                           ddos_sospechosas=ddos_sospechosas, bf=bf,
+                           urls=get_urls(), system=platform.system())
+
+
+@app.post('/admin/security')
+@login_required
+def admin_security_save():
+    cfg, f = g.cfg, request.form
+    sec = cfg.setdefault('security', {})
+    sec['enabled'] = f.get('security_enabled') == 'on'
+    sec['monitor_enabled'] = f.get('monitor_enabled') == 'on'
+    sec['ddos_enabled'] = f.get('ddos_enabled') == 'on'
+    sec['bruteforce_enabled'] = f.get('bruteforce_enabled') == 'on'
+    try:
+        sec['ddos_threshold'] = max(1, int(f.get('ddos_threshold', sec.get('ddos_threshold', 50))))
+    except (TypeError, ValueError):
+        pass
+    sec['geo_block_enabled'] = f.get('geo_block_enabled') == 'on'
+    sec['geo_block_mode'] = f.get('geo_block_mode', sec.get('geo_block_mode', 'deny'))
+    if sec['geo_block_mode'] not in ('allow', 'deny'):
+        sec['geo_block_mode'] = 'deny'
+
+    allow_raw = f.get('geo_allow_list', '')
+    deny_raw = f.get('geo_deny_list', '')
+    sec['geo_allow_list'] = [p.strip().upper() for p in allow_raw.replace(',', ' ').split() if p.strip()]
+    sec['geo_deny_list'] = [p.strip().upper() for p in deny_raw.replace(',', ' ').split() if p.strip()]
+
+    save_config(cfg)
+    flash('Configuración de seguridad guardada.', 'ok')
+    return admin_redirect('seguridad')
 
 
 @app.post('/admin/save/<section>')

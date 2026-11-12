@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Seguridad y monitoreo{% endblock %}
+{% block content %}
+{% set em = cfg.email %}
+<div class="page-head"><div><h1>Seguridad y monitoreo</h1><p>Estado del equipo, detección de ataques y control de acceso por país.</p></div></div>
+
+<div class="admin">
+  <nav class="side" aria-label="Secciones">
+    <a href="#estado">Estado del equipo</a>
+    <a href="#seguridad" class="on">Configuración de seguridad</a>
+    <a href="#ddos">Posible DDoS</a>
+    <a href="#bruteforce">Fuerza bruta</a>
+    <a href="#paises">Países (geo-bloqueo)</a>
+  </nav>
+
+  <div>
+    <!-- Estado del equipo -->
+    <section class="card" id="estado">
+      <div class="card-head"><h2>Estado del equipo</h2></div>
+      {% if stats %}
+      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+        <div class="stat">
+          <span class="num">{{ stats.temperatura if stats.temperatura else '—' }}°C</span>
+          <span class="lbl">Temperatura {{ stats.temperatura_zona }}</span>
+        </div>
+        <div class="stat">
+          <span class="num">{{ stats.ram_porcentaje }}%</span>
+          <span class="lbl">RAM usada</span>
+        </div>
+        <div class="stat">
+          <span class="num">{{ stats.disco_porcentaje }}%</span>
+          <span class="lbl">Disco usado</span>
+        </div>
+        <div class="stat">
+          <span class="num">{{ stats.cpu_porcentaje }}%</span>
+          <span class="lbl">CPU</span>
+        </div>
+        <div class="stat">
+          <span class="num">{{ stats.uptime_formateado }}</span>
+          <span class="lbl">Tiempo encendido</span>
+        </div>
+      </div>
+      <table style="margin-top:14px">
+        <thead><tr><th>Componente</th><th>Total</th><th>Usado</th><th>Libre</th><th>Uso</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Memoria RAM</td>
+            <td>{{ stats.ram_total | filesizeformat }}</td>
+            <td>{{ stats.ram_usada | filesizeformat }}</td>
+            <td>{{ stats.ram_libre | filesizeformat }}</td>
+            <td>{{ stats.ram_porcentaje }}%</td>
+          </tr>
+          <tr>
+            <td>Disco (raíz /)</td>
+            <td>{{ stats.disco_total | filesizeformat }}</td>
+            <td>{{ stats.disco_usado | filesizeformat }}</td>
+            <td>{{ stats.disco_libre | filesizeformat }}</td>
+            <td>{{ stats.disco_porcentaje }}%</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="hint" style="margin-top:10px">Los valores se calculan en caliente. No se guarda nada en disco.</p>
+      {% else %}
+      <p class="hint">El monitoreo del sistema está desactivado. Actívalo en Configuración de seguridad.</p>
+      {% endif %}
+    </section>
+
+    <!-- Configuración de seguridad -->
+    <section class="card" id="seguridad">
+      <div class="card-head"><h2>Configuración de seguridad</h2></div>
+      <form method="post" action="{{ url_for('admin_security_save') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+        <div class="switch-row">
+          <div class="txt"><strong>Activar sistema de seguridad</strong>
+            <span class="hint">Cuando está desactivado, no se monitorea nada y no se bloquea nadie.</span></div>
+          <label class="switch"><input type="checkbox" name="security_enabled" {{ 'checked' if sec.enabled }}><i></i></label>
+        </div>
+
+        <div class="switch-row">
+          <div class="txt"><strong>Monitoreo del equipo</strong>
+            <span class="hint">Temperatura, RAM, disco, CPU y tiempo encendido.</span></div>
+          <label class="switch"><input type="checkbox" name="monitor_enabled" {{ 'checked' if sec.monitor_enabled }}><i></i></label>
+        </div>
+
+        <div class="switch-row">
+          <div class="txt"><strong>Detectar posible DDoS</strong>
+            <span class="hint">Bloquea temporalmente IPs con muchas conexiones simultáneas.</span></div>
+          <label class="switch"><input type="checkbox" name="ddos_enabled" {{ 'checked' if sec.ddos_enabled }}><i></i></label>
+        </div>
+        <div class="field" style="max-width:260px">
+          <label for="ddos_threshold">Umbral de conexiones por IP</label>
+          <input id="ddos_threshold" type="number" name="ddos_threshold" min="10" max="1000" value="{{ sec.ddos_threshold }}">
+          <span class="hint">Una IP se considera sospechosa si tiene este número o más conexiones activas.</span>
+        </div>
+
+        <div class="switch-row">
+          <div class="txt"><strong>Detectar fuerza bruta</strong>
+            <span class="hint">Bloquea IPs tras varios intentos fallidos de inicio de sesión.</span></div>
+          <label class="switch"><input type="checkbox" name="bruteforce_enabled" {{ 'checked' if sec.bruteforce_enabled }}><i></i></label>
+        </div>
+
+        <div class="switch-row">
+          <div class="txt"><strong>Geo-bloqueo por países</strong>
+            <span class="hint">Permite o deniega el acceso según el país de origen de la IP.</span></div>
+          <label class="switch"><input type="checkbox" name="geo_block_enabled" {{ 'checked' if sec.geo_block_enabled }}><i></i></label>
+        </div>
+
+        <div class="segmented" style="margin-bottom:14px">
+          {% for v, l in [('deny','Denegar lista'),('allow','Permitir solo lista')] %}
+          <label><input type="radio" name="geo_block_mode" value="{{ v }}" {{ 'checked' if sec.geo_block_mode == v }}><span>{{ l }}</span></label>
+          {% endfor %}
+        </div>
+
+        <div class="row">
+          <div class="field" style="flex:2">
+            <label for="geo_allow_list">Países a permitir (códigos ISO, ej: MX ES US)</label>
+            <input id="geo_allow_list" type="text" name="geo_allow_list" value="{{ ' '.join(sec.geo_allow_list) }}" placeholder="MX ES US">
+            <span class="hint">Solo usado si el modo es "Permitir solo lista".</span>
+          </div>
+          <div class="field" style="flex:2">
+            <label for="geo_deny_list">Países a bloquear (códigos ISO, ej: CN RU KP)</label>
+            <input id="geo_deny_list" type="text" name="geo_deny_list" value="{{ ' '.join(sec.geo_deny_list) }}" placeholder="CN RU KP">
+            <span class="hint">Solo usado si el modo es "Denegar lista". Las IPs locales nunca se bloquean.</span>
+          </div>
+        </div>
+
+        <div class="actions"><button class="btn btn-primary" type="submit">Guardar seguridad</button></div>
+      </form>
+    </section>
+
+    <!-- Posible DDoS -->
+    <section class="card" id="ddos">
+      <div class="card-head"><h2>IPs con muchas conexiones (posible DDoS)</h2></div>
+      {% if sec.ddos_enabled and stats is not none %}
+      {% if ddos_sospechosas %}
+      <table>
+        <thead><tr><th>IP</th><th>Conexiones</th><th>País</th><th>Acción</th></tr></thead>
+        <tbody>
+          {% for ip, n in ddos_sospechosas %}
+          <tr>
+            <td class="mono">{{ ip }}</td>
+            <td>{{ n }}</td>
+            <td>{{ get_ip_country(ip) }}</td>
+            <td class="td-acts">
+              <form method="post" action="{{ url_for('admin_save', section='server') }}" style="display:inline" onsubmit="return confirm('¿Agregar el país de esta IP a la lista de bloqueo?')">
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-danger" type="submit">Bloquear país</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="hint">No se detectaron IPs con muchas conexiones activas.</p>
+      {% endif %}
+      {% else %}
+      <p class="hint">La detección de DDoS está desactivada.</p>
+      {% endif %}
+    </section>
+
+    <!-- Fuerza bruta -->
+    <section class="card" id="bruteforce">
+      <div class="card-head"><h2>Intentos de fuerza bruta</h2></div>
+      {% if sec.bruteforce_enabled %}
+      <p><strong>IPs sospechosas:</strong> {{ bf.ips_sospechosas }}</p>
+      {% if bf.detalle %}
+      <table>
+        <thead><tr><th>IP</th><th>Fallos</th><th>Bloqueado hasta</th></tr></thead>
+        <tbody>
+          {% for d in bf.detalle %}
+          <tr>
+            <td class="mono">{{ d.ip }}</td>
+            <td>{{ d.fallos }}</td>
+            <td>{{ d.bloqueado_hasta if d.bloqueado_hasta > 0 else '—' }} s</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="hint">No hay IPs con intentos fallidos recientes.</p>
+      {% endif %}
+      {% else %}
+      <p class="hint">La detección de fuerza bruta está desactivada.</p>
+      {% endif %}
+    </section>
+
+    <!-- Países -->
+    <section class="card" id="paises">
+      <div class="card-head"><h2>Lista de países (códigos ISO 3166-1 alpha-2)</h2></div>
+      <p class="hint">Ejemplos: MX = México, ES = España, US = Estados Unidos, CO = Colombia, AR = Argentina, CL = Chile, PE = Perú, CN = China, RU = Rusia, KP = Corea del Norte. Las IPs privadas y localhost nunca se bloquean.</p>
+      <table style="margin-top:10px">
+        <thead><tr><th>Código</th><th>País</th></tr></thead>
+        <tbody>
+          <tr><td><strong>MX</strong></td><td>México</td></tr>
+          <tr><td><strong>ES</strong></td><td>España</td></tr>
+          <tr><td><strong>US</strong></td><td>Estados Unidos</td></tr>
+          <tr><td><strong>CO</strong></td><td>Colombia</td></tr>
+          <tr><td><strong>AR</strong></td><td>Argentina</td></tr>
+          <tr><td><strong>CL</strong></td><td>Chile</td></tr>
+          <tr><td><strong>PE</strong></td><td>Perú</td></tr>
+          <tr><td><strong>CN</strong></td><td>China</td></tr>
+          <tr><td><strong>RU</strong></td><td>Rusia</td></tr>
+          <tr><td><strong>KP</strong></td><td>Corea del Norte</td></tr>
+          <tr><td><strong>IR</strong></td><td>Irán</td></tr>
+          <tr><td><strong>SY</strong></td><td>Siria</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  // Auto-refrescar estado del equipo cada 10 segundos
+  function refreshEstado(){
+    fetch('/admin/security', {cache:'no-store'})
+      .then(function(r){ return r.text(); })
+      .then(function(html){
+        // Extraer solo los valores de los stats del HTML devuelto (simple: recargar la sección)
+      }).catch(function(){});
+  }
+  setInterval(refreshEstado, 10000);
+})();
+</script>
+{% endblock %}
